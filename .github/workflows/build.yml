@@ -31,7 +31,7 @@ jobs:
       - name: Install OS packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip zip build-essential libncurses5 libstdc++6 python3-pip python3-venv
+          34| sudo apt-get install -y wget unzip zip build-essential libncurses6 libstdc++6 python3-pip python3-venv
 
       - name: Prepare Android SDK root
         run: |
