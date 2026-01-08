@@ -17,7 +17,7 @@ jobs:
       - name: Installiere Linux-Abhängigkeiten (SDK/NDK Prerequisites)
         run: |
           sudo apt update
-          sudo apt install -y build-essential python3 python3-pip openjdk-17-jdk git zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5
+          sudo apt install -y build-essential python3 python3-pip openjdk-17-jdk git zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6
 
       # 2. Python-Umgebung einrichten
       - name: Installiere Python-Abhängigkeiten (Buildozer und Cython)
