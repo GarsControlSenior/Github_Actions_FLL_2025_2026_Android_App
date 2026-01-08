@@ -1,45 +1,102 @@
 name: Build Kivy APK Manuell
 
 on:
-  push:
-    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
-    # Wichtig: Wir brauchen hier ein Linux-System für Buildozer
     runs-on: ubuntu-latest
-    
+    env:
+      PYTHONUNBUFFERED: '1'
+      # Buildozer erwartet SDK unter $HOME/.buildozer/android/platform/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/.buildozer/android/platform/android-sdk
+      # Optional: Pfad für NDK falls erforderlich
+      ANDROID_NDK_ROOT: ${{ github.workspace }}/.buildozer/android/platform/android-sdk/ndk
+
     steps:
-      - name: Code auschecken
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. System-Abhängigkeiten installieren
-      - name: Installiere Linux-Abhängigkeiten (SDK/NDK Prerequisites)
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential python3 python3-pip openjdk-17-jdk git zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6
-
-      # 2. Python-Umgebung einrichten
-      - name: Installiere Python-Abhängigkeiten (Buildozer und Cython)
-        run: |
-          pip3 install buildozer cython
-
-      # 3. Den eigentlichen Kivy Build starten
-      # Die buildozer.spec wird hier verwendet
-      - name: Build APK mit Buildozer
-        run: buildozer android debug
-
-      # 4. APK als Artifact hochladen
-      # Diesen Schritt brauchen wir, um die APK herunterladen zu können
-      - name: APK als Artifact hochladen
-        uses: actions/upload-artifact@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          name: Kivy-App-APK
-          path: bin/*.apk
+          python-version: '3.11'
 
-      
-      - name: Install Android Build Tools
+      - name: Set up Java (JDK 11)
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Install OS packages
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
-          export PATH=$PATH:$ANDROID_HOME/build-tools/34.0.0
+          sudo apt-get update
+          sudo apt-get install -y wget unzip zip build-essential libncurses5 libstdc++6 python3-pip python3-venv
+
+      - name: Prepare Android SDK root
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT}"
+          mkdir -p "$SDK_ROOT"
+          echo "Using SDK_ROOT=$SDK_ROOT"
+          ls -la "$SDK_ROOT" || true
+
+      - name: Download and install Android commandline-tools
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT}"
+          cd /tmp
+          # aktuelle Version kann sich ändern — URL sollte weiterhin funktionieren
+          CLI_ZIP="commandlinetools-linux-9477386_latest.zip"
+          wget -q "https://dl.google.com/android/repository/${CLI_ZIP}"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          unzip -q "${CLI_ZIP}" -d "$SDK_ROOT/cmdline-tools/tmp"
+          # move to "latest" layout expected by sdkmanager
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+          mv "$SDK_ROOT/cmdline-tools/tmp/cmdline-tools/"* "$SDK_ROOT/cmdline-tools/latest/"
+          rm -f "${CLI_ZIP}"
+          ls -la "$SDK_ROOT/cmdline-tools"
+
+      - name: Add sdkmanager to PATH (for this job)
+        shell: bash
+        run: |
+          export PATH="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:${PATH}"
+          echo "PATH=${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:\$PATH" >> $GITHUB_ENV
+
+      - name: Install Android SDK components (platform-tools, build-tools, platform)
+        env:
+          SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          # Use sdkmanager to install what buildozer needs (including aidl which lives in build-tools)
+          # adjust API level / build-tools version as needed by your project / buildozer.spec
+          yes | "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${SDK_ROOT}" --licenses
+          "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${SDK_ROOT}" "platform-tools" "platforms;android-31" "build-tools;31.0.0" "build-tools;33.0.2" "platforms;android-33" "ndk;21.4.7075529" || true
+          echo "Installed SDK contents:"
+          ls -la "${SDK_ROOT}/build-tools" || true
+          test -f "${SDK_ROOT}/build-tools/31.0.0/aidl" || test -f "${SDK_ROOT}/build-tools/33.0.2/aidl" || (echo "aidl nicht gefunden in build-tools" && exit 1)
+
+      - name: Install Python deps (Buildozer, Cython)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --user --upgrade buildozer cython
+          # ensure pip user bin is on PATH for this job
+          echo "${HOME}/.local/bin" >> $GITHUB_PATH
+
+      - name: Show environment and SDK info (debug)
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "PATH=$PATH"
+          ls -la "$ANDROID_SDK_ROOT"
+          ls -la "$ANDROID_SDK_ROOT/build-tools" || true
+          which buildozer || (echo "buildozer not found" && exit 1)
+          buildozer --version
+
+      - name: Run Buildozer (Android debug)
+        working-directory: ${{ github.workspace }}
+        env:
+          ANDROIDSDK: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_ROOT }}
+        run: |
+          # optional: initialisiere buildozer um .buildozer Ordner zu erzeugen
+          buildozer init || true
+          # passe den target an falls nötig: android, android_new, android_debug, android_release
+          buildozer -v android debug
