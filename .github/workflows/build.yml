@@ -1,4 +1,4 @@
-name: Build Kivy APK
+name: Build Kivy APK Manuell
 
 on:
   push:
@@ -6,18 +6,31 @@ on:
 
 jobs:
   build:
+    # Wichtig: Wir brauchen hier ein Linux-System für Buildozer
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Code auschecken
         uses: actions/checkout@v4
 
-      # 🚨 DIE KORRIGIERTE ACTION HIER VERWENDEN 🚨
-      - name: Build mit Kivy/Buildozer (Stabile Methode)
-        uses: kivy/buildozer-action@v1 # <- Diese Action ist die Lösung!
-        with:
-          command: buildozer android debug
+      # 1. System-Abhängigkeiten installieren
+      - name: Installiere Linux-Abhängigkeiten (SDK/NDK Prerequisites)
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential python3 python3-pip openjdk-17-jdk git zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5
 
+      # 2. Python-Umgebung einrichten
+      - name: Installiere Python-Abhängigkeiten (Buildozer und Cython)
+        run: |
+          pip3 install buildozer cython
+
+      # 3. Den eigentlichen Kivy Build starten
+      # Die buildozer.spec wird hier verwendet
+      - name: Build APK mit Buildozer
+        run: buildozer android debug
+
+      # 4. APK als Artifact hochladen
+      # Diesen Schritt brauchen wir, um die APK herunterladen zu können
       - name: APK als Artifact hochladen
         uses: actions/upload-artifact@v4
         with:
