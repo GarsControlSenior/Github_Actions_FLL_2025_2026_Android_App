@@ -2,7 +2,7 @@ name: Build Kivy APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
   build:
@@ -12,17 +12,14 @@ jobs:
       - name: Code auschecken
         uses: actions/checkout@v4
 
-      # Dieser Schritt nutzt eine fertige Action, um Buildozer auszuführen
-      - name: Build mit Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      # 🚨 DIE KORRIGIERTE ACTION HIER VERWENDEN 🚨
+      - name: Build mit Kivy/Buildozer (Stabile Methode)
+        uses: kivy/buildozer-action@v1 # <- Diese Action ist die Lösung!
         with:
           command: buildozer android debug
-          buildozer_version: master
 
-      # Dieser Schritt lädt die fertige APK hoch, damit du sie downloaden kannst
       - name: APK als Artifact hochladen
         uses: actions/upload-artifact@v4
         with:
-          name: meine-app-apk
+          name: Kivy-App-APK
           path: bin/*.apk
