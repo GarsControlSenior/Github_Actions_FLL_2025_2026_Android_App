@@ -36,3 +36,10 @@ jobs:
         with:
           name: Kivy-App-APK
           path: bin/*.apk
+
+      - name: Install Android Build Tools
+        - name: Install Android Build Tools
+          run: |
+            yes | sdkmanager --licenses
+            sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
+            export PATH=$PATH:$ANDROID_HOME/build-tools/34.0.0
