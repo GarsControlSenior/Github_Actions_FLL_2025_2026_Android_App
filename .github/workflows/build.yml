@@ -13,7 +13,7 @@ jobs:
       PYTHONUNBUFFERED: '1'
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       ANDROIDSDK: ${{ github.workspace }}/android-sdk
-
+      
     steps:
       - name: Code auschecken
         uses: actions/checkout@v4
@@ -24,18 +24,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential git wget unzip zip libncurses5 libncursesw5 libtinfo5 libffi-dev libssl-dev python3-pip python3-venv util-linux autoconf libtool automake
 
-      # 2. Python Setup (WICHTIG: Zurück zu 3.9, um 'long' Fehler in pyjnius zu vermeiden)
+      # 2. Python Setup (Stabile Version für P4A/pyjnius)
       - name: Set up Python 3.9
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9' # GEÄNDERT auf 3.9
+          python-version: '3.9' # Korrigiert auf 3.9, um den 'long'-Fehler zu vermeiden
 
-      # 3. Java Setup (JDK 17)
+      # 3. Java Setup (JDK 17 für SdkManager)
       - name: Set up Java (JDK 17)
         uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '17' # Korrigiert auf 17 für SdkManager
 
       # 4. Buildozer installieren
       - name: Installiere Buildozer & Cython
@@ -59,11 +59,16 @@ jobs:
           yes | sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT
           sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "build-tools;34.0.0" "platforms;android-34" "platforms;android-33"
 
-      # 7. Der eigentliche Build
-      - name: Build APK mit Buildozer
+      # 7. Der eigentliche Build (NEU: Clean-Schritt hinzugefügt)
+      - name: Build APK mit Buildozer (Clean & Debug)
         run: |
           export ANDROIDSDK=$ANDROID_SDK_ROOT
           export PATH=$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          
+          # LÖSCHE ALLE CACHES, um fehlerhafte Reste (wie das 3.11-Artefakt) zu entfernen.
+          yes | buildozer android clean
+          
+          # Starte den tatsächlichen Build
           yes | buildozer android debug
 
       # 8. Upload
