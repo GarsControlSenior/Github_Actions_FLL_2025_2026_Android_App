@@ -100,3 +100,15 @@ jobs:
           buildozer init || true
           # passe den target an falls nötig: android, android_new, android_debug, android_release
           buildozer -v android debug
+
+
+- name: Accept Android SDK Licenses & Install
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y yes
+    yes | "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${SDK_ROOT}" --licenses
+    "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${SDK_ROOT}" "platform-tools" "platforms;android-31" "build-tools;31.0.0" "build-tools;33.0.2" "platforms;android-33" "ndk;21.4.7075529" || true
+    echo "Installed SDK contents:"
+    ls -la "${SDK_ROOT}/build-tools" || true
+    test -f "${SDK_ROOT}/build-tools/31.0.0/aidl" || test -f "${SDK_ROOT}/build-tools/33.0.2/aidl" || (echo "aidl nicht gefunden in build-tools" && exit 1)
+  shell: bash
