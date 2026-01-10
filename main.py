@@ -7,26 +7,23 @@ from kivy.uix.image import Image
 from kivy.graphics import Color, Ellipse, Line
 import math
 from kivy.uix.label import Label
-from kivy.core.window import Window # Hinzugefügt für bessere Kamera-Handhabung
+from kivy.core.window import Window
+from os.path import join, exists # join und exists für Pfade hinzugefügt
 from PIL import Image as PILImage
 
-# Hinweis: Für die Bildverarbeitung wird die Pillow-Bibliothek benötigt (in spec korrigiert).
+# Hinweis: Pillow (PIL) muss in buildozer.spec als Requirement enthalten sein.
 
 class TouchImage(Image):
-    # Diese Klasse bleibt unverändert, da die Zeichenlogik funktioniert.
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.points = []
 
     def on_touch_down(self, touch):
-        # Wir wollen nur auf den TouchImage-Bereich reagieren
+        # Nur reagieren, wenn der Touch auf dem Widget ist und weniger als 4 Punkte gesetzt sind
         if self.collide_point(*touch.pos) and len(self.points) < 4:
-            # Touch-Koordinaten relativ zum Widget
-            x_rel = touch.x - self.x
-            y_rel = touch.y - self.y
             self.points.append((touch.x, touch.y))
             self.redraw_shapes()
-            return True # Wichtig: Signalisiert, dass der Touch verarbeitet wurde
+            return True 
         
         return super().on_touch_down(touch)
 
@@ -36,7 +33,6 @@ class TouchImage(Image):
         if not self.points:
             return
 
-        # Zeichnet die Punkte und das sortierte Polygon wie zuvor
         with self.canvas.after:
             # Punkte zeichnen
             Color(1, 0, 0)
@@ -63,26 +59,25 @@ class TouchImage(Image):
                 else:
                     Line(points=pts, width=2)
 
+
 class CameraApp(App):
     def build(self):
         root = BoxLayout(orientation="vertical")
         
-        # 1. Haupt-Widget: Enthält entweder die Kamera oder das Bild
+        # 1. Haupt-Widget: Enthält entweder die Kamera oder das Bild (nimmt 70% des Platzes ein)
         self.main_content = BoxLayout(orientation="vertical", size_hint_y=0.7)
         root.add_widget(self.main_content)
         
-        # 2. Steuerungselemente (Buttons)
+        # 2. Steuerungselemente (Buttons und Label, nehmen 30% des Platzes ein)
         self.controls = BoxLayout(orientation="vertical", size_hint_y=0.3)
         root.add_widget(self.controls)
 
-        # A. Kamera-Vorschau initialisieren (später in main_content hinzugefügt)
-        # play=False, bis wir wissen, dass alles geladen ist
+        # Widgets initialisieren
         self.camera = Camera(play=False, resolution=(640, 480))
-        
-        # B. TouchImage initialisieren
         self.image = TouchImage(allow_stretch=True, keep_ratio=True)
-        
-        # UI-Elemente
+        self.filename = "" # Initialisiere den Dateinamen
+
+        # UI-Elemente zu Controls hinzufügen
         btn_photo = Button(text="Foto aufnehmen", size_hint_y=0.3)
         btn_photo.bind(on_press=self.take_photo)
         self.controls.add_widget(btn_photo)
@@ -94,72 +89,80 @@ class CameraApp(App):
         self.info = Label(text="Kamera wird gestartet...", size_hint_y=0.4)
         self.controls.add_widget(self.info)
         
-        # Initial die Kamera hinzufügen und starten
+        # Beim Start: Nur die Kamera anzeigen
         self.main_content.add_widget(self.camera)
-        self.camera.play = True # Kamera jetzt starten
+        self.camera.play = True
+        self.info.text = "Kamera läuft."
 
         return root
 
     def take_photo(self, *args):
-        # 1. Dateinamen setzen und Foto aufnehmen
-        self.filename = "foto.png"
-        
-        # HINWEIS: Manchmal muss man eine kurze Verzögerung einbauen,
-        # um sicherzustellen, dass die Kamera bereit ist.
         try:
+            # Absoluten Pfad im privaten App-Speicher definieren
+            app_data_path = App.get_running_app().user_data_dir 
+            self.filename = join(app_data_path, "foto.png") 
+            
+            # Foto aufnehmen
             self.camera.export_to_png(self.filename)
+            
+            # Kamera stoppen und aus dem Layout entfernen
+            self.camera.play = False
+            self.main_content.remove_widget(self.camera)
+
+            # TouchImage mit dem neuen Bild hinzufügen
+            self.image.source = self.filename
+            self.image.reload()
+            
+            self.main_content.clear_widgets() # Platzhalter leeren
+            self.main_content.add_widget(self.image)
+
+            self.image.points.clear()
+            self.image.canvas.after.clear()
+            self.info.text = "4 Punkte antippen"
+            
         except Exception as e:
-            self.info.text = f"Fehler beim Speichern: {e}"
+            self.info.text = f"Fehler beim Foto: {e}"
             return
 
-        # 2. Kamera stoppen und entfernen
-        self.camera.play = False
-        self.main_content.remove_widget(self.camera)
-
-        # 3. TouchImage mit dem aufgenommenen Bild hinzufügen
-        self.image.source = self.filename
-        self.image.reload()
-        
-        # 4. Neu setzen des Image Widgets
-        self.main_content.clear_widgets() # Sicherstellen, dass alles entfernt ist
-        self.main_content.add_widget(self.image)
-
-        self.image.points.clear()
-        self.image.canvas.after.clear()
-        self.info.text = "4 Punkte antippen"
-
     def correct_image(self, *args):
-        # HINWEIS: Hier ist der Ort für die Perspektivkorrektur-Logik,
-        # die wir später besprochen haben. Im Moment ist die vereinfachte Logik aktiv.
-        
         if len(self.image.points) != 4:
             self.info.text = "Bitte genau 4 Punkte auswählen"
             return
         
-        # ... (Logik zur perspektivischen Korrektur hier einfügen) ...
-        # Für den Test bleibt die Logik einfach:
-        
+        # Prüfen, ob das Foto existiert, bevor PIL es öffnet
+        if not self.filename or not exists(self.filename):
+            self.info.text = "Fehler: Zuerst Foto aufnehmen!"
+            return
+
+        app_data_path = App.get_running_app().user_data_dir
+        korrigiert_filename = join(app_data_path, "korrigiert.png")
+
         try:
+            # 1. Punkte-Koordinaten auslesen (Kivy-Koordinaten)
             xs = [p[0] for p in self.image.points]
             ys = [p[1] for p in self.image.points]
 
-            # Kivy-Koordinaten (unten-links) müssen zu PIL-Koordinaten (oben-links)
-            left, right = int(min(xs)), int(max(xs))
-            bottom_kivy, top_kivy = int(min(ys)), int(max(ys))
-            
+            # 2. PIL-Bild öffnen
             img = PILImage.open(self.filename)
             
-            # Y-Achse invertieren: (img.height - top_kivy) bis (img.height - bottom_kivy)
+            # 3. Zuschneiden (Bounding Box)
+            # Kivy Y (unten-links) muss zu PIL Y (oben-links) konvertiert werden
+            left, right = int(min(xs)), int(max(xs))
+            top_kivy, bottom_kivy = int(max(ys)), int(min(ys)) # max/min vertauschen, da Kivy y-unten-links
+            
+            # Invertierung für PIL:
+            # PIL crop erwartet (left, top, right, bottom) (top ist Y=0)
             cropped = img.crop((left, img.height - top_kivy, right, img.height - bottom_kivy))
 
-            # leichte Entzerrung durch Neuskalierung
-            corrected = cropped.resize((400, 600))
+            # 4. Neuskalierung/Entzerrung (hier: einfache Skalierung)
+            corrected = cropped.resize((400, 600)) # HIER KÖNNTE SPÄTER DIE PERSPEKTIVKORREKTUR ERFOLGEN
 
-            corrected.save("korrigiert.png")
+            # 5. Speichern und Anzeigen
+            corrected.save(korrigiert_filename)
 
-            self.image.source = "korrigiert.png"
+            self.image.source = korrigiert_filename
             self.image.reload()
-
+            
             self.image.points.clear()
             self.image.canvas.after.clear()
             self.info.text = "Korrektur angewendet"
