@@ -22,7 +22,7 @@ source.include_exts = py,png,jpg,kv,atlas
 #source.exclude_dirs = tests, bin, venv
 
 # (str) Application versioning (method 1)
-version = 0.2
+version = 0.5
 
 # (list) Application requirements
 # HINWEIS: 'android' ZWINGEND hinzugefügt, 'pillow' für Ihre Bildverarbeitung bestätigt.
