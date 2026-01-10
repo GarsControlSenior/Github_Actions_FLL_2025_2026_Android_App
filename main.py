@@ -8,7 +8,7 @@ from kivy.graphics import Color, Ellipse, Line
 import math
 from kivy.uix.label import Label
 from kivy.core.window import Window
-from os.path import join, exists # join und exists für Pfade hinzugefügt
+from os.path import join, exists 
 from PIL import Image as PILImage
 
 # Hinweis: Pillow (PIL) muss in buildozer.spec als Requirement enthalten sein.
@@ -98,22 +98,18 @@ class CameraApp(App):
 
     def take_photo(self, *args):
         try:
-            # Absoluten Pfad im privaten App-Speicher definieren
             app_data_path = App.get_running_app().user_data_dir 
             self.filename = join(app_data_path, "foto.png") 
             
-            # Foto aufnehmen
             self.camera.export_to_png(self.filename)
             
-            # Kamera stoppen und aus dem Layout entfernen
             self.camera.play = False
             self.main_content.remove_widget(self.camera)
 
-            # TouchImage mit dem neuen Bild hinzufügen
             self.image.source = self.filename
             self.image.reload()
             
-            self.main_content.clear_widgets() # Platzhalter leeren
+            self.main_content.clear_widgets()
             self.main_content.add_widget(self.image)
 
             self.image.points.clear()
@@ -129,7 +125,6 @@ class CameraApp(App):
             self.info.text = "Bitte genau 4 Punkte auswählen"
             return
         
-        # Prüfen, ob das Foto existiert, bevor PIL es öffnet
         if not self.filename or not exists(self.filename):
             self.info.text = "Fehler: Zuerst Foto aufnehmen!"
             return
@@ -138,28 +133,64 @@ class CameraApp(App):
         korrigiert_filename = join(app_data_path, "korrigiert.png")
 
         try:
-            # 1. Punkte-Koordinaten auslesen (Kivy-Koordinaten)
-            xs = [p[0] for p in self.image.points]
-            ys = [p[1] for p in self.image.points]
-
-            # 2. PIL-Bild öffnen
+            # 1. Bild öffnen
             img = PILImage.open(self.filename)
             
-            # 3. Zuschneiden (Bounding Box)
-            # Kivy Y (unten-links) muss zu PIL Y (oben-links) konvertiert werden
-            left, right = int(min(xs)), int(max(xs))
-            top_kivy, bottom_kivy = int(max(ys)), int(min(ys)) # max/min vertauschen, da Kivy y-unten-links
+            # 2. Kivy-Koordinaten auf Widget-Dimensionen skalieren
+            # Die Kivy-Koordinaten (self.image.points) sind relativ zum Bildschirm.
+            # Sie müssen auf die Pixel-Dimensionen des tatsächlichen Bildes skaliert werden.
             
-            # Invertierung für PIL:
-            # PIL crop erwartet (left, top, right, bottom) (top ist Y=0)
-            cropped = img.crop((left, img.height - top_kivy, right, img.height - bottom_kivy))
+            # Verhältnis zwischen Widget-Größe und Bild-Pixel-Größe
+            ratio_x = img.width / self.image.width
+            ratio_y = img.height / self.image.height
+            
+            # Anpassen der Punkte auf Bild-Pixel-Koordinaten
+            scaled_points = []
+            for x_kivy, y_kivy in self.image.points:
+                # Kivy-Punkt relativ zum Widget berechnen
+                x_rel = x_kivy - self.image.x
+                y_rel = y_kivy - self.image.y
+                
+                # Skalierung auf Bild-Pixel
+                x_img = x_rel * ratio_x
+                y_img = y_rel * ratio_y
+                scaled_points.append((x_img, y_img))
 
-            # 4. Neuskalierung/Entzerrung (hier: einfache Skalierung)
-            corrected = cropped.resize((400, 600)) # HIER KÖNNTE SPÄTER DIE PERSPEKTIVKORREKTUR ERFOLGEN
 
-            # 5. Speichern und Anzeigen
+            # 3. Bestimme die Bounding Box des Zuschneidebereichs (Min/Max der skalierten Punkte)
+            xs = [p[0] for p in scaled_points]
+            ys = [p[1] for p in scaled_points]
+
+            left = int(min(xs))
+            right = int(max(xs))
+            # HIER DIE KORREKTUR: PIL Y (top) = Bildhöhe - Kivy Y (bottom)
+            # Kivy Y=0 ist unten, PIL Y=0 ist oben.
+            
+            # Kivy Y-Koordinate des oberen Rands (Pixel-basiert)
+            top_kivy_pixel = int(max(ys))
+            # Kivy Y-Koordinate des unteren Rands (Pixel-basiert)
+            bottom_kivy_pixel = int(min(ys))
+
+            # Konvertierung zu PIL (top, bottom)
+            pil_top = img.height - top_kivy_pixel
+            pil_bottom = img.height - bottom_kivy_pixel 
+            
+            # 4. Überprüfung des gültigen Zuschneidebereichs
+            if left >= right or pil_top >= pil_bottom:
+                 self.info.text = "Fehler bei Koordinaten: Ungültige Zuschneide-Box (Punkte zu nah oder falsch)."
+                 return
+            
+            # 5. Zuschneiden (Bounding Box)
+            # PIL crop erwartet (left, top, right, bottom)
+            cropped = img.crop((left, pil_top, right, pil_bottom))
+
+            # 6. Neuskalierung/Entzerrung (einfache Skalierung als Platzhalter)
+            corrected = cropped.resize((400, 600))
+
+            # 7. Speichern und Anzeigen
             corrected.save(korrigiert_filename)
 
+            # Neuladen des Images mit dem korrigierten Bild
             self.image.source = korrigiert_filename
             self.image.reload()
             
