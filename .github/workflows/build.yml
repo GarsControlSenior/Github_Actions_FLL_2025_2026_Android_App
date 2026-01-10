@@ -70,6 +70,8 @@ jobs:
       # 8. Der Build
       - name: Build APK mit Buildozer
         run: |
+          buildozer android clean
+          buildozer android debug # 'clean' sorgt dafür, dass Gradle komplett neu initialisiert wird.
           export ANDROIDSDK=$ANDROID_SDK_ROOT
           export PATH=$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
           
