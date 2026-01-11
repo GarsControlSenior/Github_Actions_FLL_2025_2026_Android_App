@@ -22,11 +22,11 @@ source.include_exts = py,png,jpg,kv,atlas
 #source.exclude_dirs = tests, bin, venv
 
 # (str) Application versioning (method 1)
-version = 0.5
+version = 0.6
 
 # (list) Application requirements
 # HINWEIS: 'android' ZWINGEND hinzugefügt, 'pillow' für Ihre Bildverarbeitung bestätigt.
-requirements = python3,kivy,android,pillow
+requirements = python3,kivy,android,pillow,plyer
 
 # (list) Supported orientations
 orientation = portrait
