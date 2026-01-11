@@ -8,10 +8,16 @@ from kivy.graphics import Color, Ellipse, Line
 import math
 from kivy.uix.label import Label
 from kivy.core.window import Window
-from os.path import join, exists 
+from kivy.clock import Clock # Neu: Für verzögerten Start
+from os.path import join, exists
 from PIL import Image as PILImage
 
-# Hinweis: Pillow (PIL) muss in buildozer.spec als Requirement enthalten sein.
+# Neu: Imports für Android-Berechtigungen. Nutzt try-except für Desktop-Tests.
+try:
+    from android.permissions import request_permissions, Permission
+except ImportError:
+    request_permissions = None # Platzhalter für Desktop-Systeme
+
 
 class TouchImage(Image):
     def __init__(self, **kwargs):
@@ -19,31 +25,26 @@ class TouchImage(Image):
         self.points = []
 
     def on_touch_down(self, touch):
-        # Nur reagieren, wenn der Touch auf dem Widget ist und weniger als 4 Punkte gesetzt sind
         if self.collide_point(*touch.pos) and len(self.points) < 4:
             self.points.append((touch.x, touch.y))
             self.redraw_shapes()
-            return True 
-        
+            return True
+
         return super().on_touch_down(touch)
 
     def redraw_shapes(self):
-        # Lösche vorherige Zeichnungen
         self.canvas.after.clear()
         if not self.points:
             return
 
         with self.canvas.after:
-            # Punkte zeichnen
             Color(1, 0, 0)
             for x, y in self.points:
                 Ellipse(pos=(x - 6, y - 6), size=(12, 12))
 
-            # Linien in sinnvoller Reihenfolge zeichnen (nach Winkel um Schwerpunkt sortieren)
             if len(self.points) >= 2:
                 cx = sum(p[0] for p in self.points) / len(self.points)
                 cy = sum(p[1] for p in self.points) / len(self.points)
-
                 def ang(p):
                     return math.atan2(p[1] - cy, p[0] - cx)
 
@@ -54,13 +55,54 @@ class TouchImage(Image):
 
                 Color(0, 1, 0)
                 if len(ordered) >= 3:
-                    # Polygon schließen
                     Line(points=pts + pts[0:2], width=2)
                 else:
                     Line(points=pts, width=2)
 
-
 class CameraApp(App):
+    # --- NEUE METHODEN FÜR BERECHTIGUNGEN ---
+
+    def check_and_request_permissions(self):
+        """Überprüft und fordert die notwendigen Berechtigungen an."""
+        
+        if request_permissions: # Nur auf Android ausführen
+            self.info.text = "Fordere Berechtigungen an..."
+            
+            # Die Liste der benötigten Berechtigungen (Kamera und Speicher)
+            permissions_to_request = [
+                Permission.CAMERA,
+                Permission.WRITE_EXTERNAL_STORAGE
+            ]
+            
+            # Die Abfrage starten. Das Ergebnis landet in 'self.permissions_callback'.
+            request_permissions(permissions_to_request, self.permissions_callback)
+        else:
+            # Nicht auf Android (Desktop): Kamera kann direkt gestartet werden
+            self.start_camera_if_allowed()
+
+    def permissions_callback(self, permissions, granted):
+        """Wird aufgerufen, nachdem der Benutzer auf die Berechtigungsanfrage reagiert hat."""
+        
+        # Prüfen, ob alle kritischen Berechtigungen erteilt wurden
+        if all(granted):
+            self.info.text = "Alle Berechtigungen erteilt. Kamera startet..."
+            self.start_camera_if_allowed()
+        else:
+            self.info.text = "FEHLER: Berechtigungen verweigert. Kamera nicht verfügbar."
+            # Hier könnten Sie eine Fehlermeldung anzeigen oder die App beenden
+
+    def start_camera_if_allowed(self):
+        """Startet die Kamera, wenn die Berechtigungen erteilt wurden oder auf dem Desktop."""
+        # Wichtig: Wir müssen self.camera zur main_content hinzufügen, da es am Ende von build()
+        # NICHT mehr hinzugefügt wird, sondern hier!
+        if self.camera not in self.main_content.children:
+             self.main_content.add_widget(self.camera)
+        
+        self.camera.play = True
+        self.info.text = "Kamera läuft."
+    
+    # --- BESTEHENDE METHODEN ---
+
     def build(self):
         root = BoxLayout(orientation="vertical")
         
@@ -75,7 +117,7 @@ class CameraApp(App):
         # Widgets initialisieren
         self.camera = Camera(play=False, resolution=(640, 480))
         self.image = TouchImage(allow_stretch=True, keep_ratio=True)
-        self.filename = "" # Initialisiere den Dateinamen
+        self.filename = "" 
 
         # UI-Elemente zu Controls hinzufügen
         btn_photo = Button(text="Foto aufnehmen", size_hint_y=0.3)
@@ -86,21 +128,23 @@ class CameraApp(App):
         btn_fix.bind(on_press=self.correct_image)
         self.controls.add_widget(btn_fix)
 
-        self.info = Label(text="Kamera wird gestartet...", size_hint_y=0.4)
+        self.info = Label(text="Warte auf Berechtigung...", size_hint_y=0.4) # Angepasster Starttext
         self.controls.add_widget(self.info)
         
-        # Beim Start: Nur die Kamera anzeigen
-        self.main_content.add_widget(self.camera)
-        self.camera.play = True
-        self.info.text = "Kamera läuft."
+        # KEIN DIREKTER KAMERA-START MEHR HIER! Die Kamera wird erst nach der Berechtigungsprüfung gestartet.
+        
+        # Startet die Berechtigungsabfrage verzögert
+        Clock.schedule_once(lambda dt: self.check_and_request_permissions(), 0.1)
 
         return root
 
     def take_photo(self, *args):
+        # ... (Logik wie zuvor) ...
         try:
-            app_data_path = App.get_running_app().user_data_dir 
-            self.filename = join(app_data_path, "foto.png") 
-            
+            app_data_path = App.get_running_app().user_data_dir
+            self.filename = join(app_data_path, "foto.png")
+
+        
             self.camera.export_to_png(self.filename)
             
             self.camera.play = False
@@ -121,6 +165,7 @@ class CameraApp(App):
             return
 
     def correct_image(self, *args):
+        # ... (Logik wie zuvor) ...
         if len(self.image.points) != 4:
             self.info.text = "Bitte genau 4 Punkte auswählen"
             return
@@ -137,21 +182,13 @@ class CameraApp(App):
             img = PILImage.open(self.filename)
             
             # 2. Kivy-Koordinaten auf Widget-Dimensionen skalieren
-            # Die Kivy-Koordinaten (self.image.points) sind relativ zum Bildschirm.
-            # Sie müssen auf die Pixel-Dimensionen des tatsächlichen Bildes skaliert werden.
-            
-            # Verhältnis zwischen Widget-Größe und Bild-Pixel-Größe
             ratio_x = img.width / self.image.width
             ratio_y = img.height / self.image.height
             
-            # Anpassen der Punkte auf Bild-Pixel-Koordinaten
             scaled_points = []
             for x_kivy, y_kivy in self.image.points:
-                # Kivy-Punkt relativ zum Widget berechnen
                 x_rel = x_kivy - self.image.x
                 y_rel = y_kivy - self.image.y
-                
-                # Skalierung auf Bild-Pixel
                 x_img = x_rel * ratio_x
                 y_img = y_rel * ratio_y
                 scaled_points.append((x_img, y_img))
@@ -163,12 +200,7 @@ class CameraApp(App):
 
             left = int(min(xs))
             right = int(max(xs))
-            # HIER DIE KORREKTUR: PIL Y (top) = Bildhöhe - Kivy Y (bottom)
-            # Kivy Y=0 ist unten, PIL Y=0 ist oben.
-            
-            # Kivy Y-Koordinate des oberen Rands (Pixel-basiert)
             top_kivy_pixel = int(max(ys))
-            # Kivy Y-Koordinate des unteren Rands (Pixel-basiert)
             bottom_kivy_pixel = int(min(ys))
 
             # Konvertierung zu PIL (top, bottom)
@@ -181,7 +213,6 @@ class CameraApp(App):
                  return
             
             # 5. Zuschneiden (Bounding Box)
-            # PIL crop erwartet (left, top, right, bottom)
             cropped = img.crop((left, pil_top, right, pil_bottom))
 
             # 6. Neuskalierung/Entzerrung (einfache Skalierung als Platzhalter)
@@ -190,7 +221,6 @@ class CameraApp(App):
             # 7. Speichern und Anzeigen
             corrected.save(korrigiert_filename)
 
-            # Neuladen des Images mit dem korrigierten Bild
             self.image.source = korrigiert_filename
             self.image.reload()
             
