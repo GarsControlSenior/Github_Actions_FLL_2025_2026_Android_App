@@ -7,8 +7,12 @@ from kivy.graphics import Color, Ellipse, Line
 import math
 from kivy.uix.label import Label
 from PIL import Image as PILImage
-import cv2
-import numpy as np
+
+# Neu: Imports für Android-Berechtigungen. Nutzt try-except für Desktop-Tests.
+try:
+    from android.permissions import request_permissions, Permission
+except ImportError:
+    request_permissions = None # Platzhalter für Desktop-Systeme
 
 class TouchImage(Image):
     def __init__(self, **kwargs):
@@ -55,7 +59,7 @@ class TouchImage(Image):
                     Line(points=pts, width=3)
 
     def get_sorted_points(self):
-        """Gibt Punkte sortiert zurück (für Perspektivkorrektur)"""
+        """Gibt Punkte sortiert zurück (für Zuschnitt)"""
         if len(self.points) != 4:
             return None
         
@@ -120,55 +124,46 @@ class CameraApp(App):
             self.info.text = f"Fehler beim Foto: {str(e)}"
 
     def correct_image(self, *args):
-        """Perspektivkorrektur mit OpenCV"""
+        """Einfaches Zuschneiden und Skalieren (ohne OpenCV)"""
         if len(self.image.points) != 4:
             self.info.text = f"Bitte genau 4 Punkte auswählen (aktuell: {len(self.image.points)})"
             return
 
         try:
-            # Sortierte Punkte holen (kein Überschneiden)
+            # Sortierte Punkte holen
             sorted_points = self.image.get_sorted_points()
-            src_points = np.array(sorted_points, dtype=np.float32)
 
-            # Berechne Bounding Box für Zielgröße
+            # Berechne Bounding Box
             xs = [p[0] for p in sorted_points]
             ys = [p[1] for p in sorted_points]
-            width = int(max(xs) - min(xs))
-            height = int(max(ys) - min(ys))
+            left, right = int(min(xs)), int(max(xs))
+            top, bottom = int(min(ys)), int(max(ys))
 
-            # Falls Dimensionen zu klein
+            # Bild laden und zuschneiden
+            img = PILImage.open(self.filename)
+            
+            # Zuschneiden (je nach Bild-Rotation anpassen)
+            width = right - left
+            height = bottom - top
+            
             if width < 50 or height < 50:
                 self.info.text = "Punkte zu nah beieinander"
                 return
+            
+            cropped = img.crop((left, top, right, bottom))
 
-            # Zielrechteck (Draufsicht)
-            dst_points = np.array([
-                [0, 0],
-                [width, 0],
-                [width, height],
-                [0, height]
-            ], dtype=np.float32)
-
-            # Perspektive-Transformationsmatrix berechnen
-            matrix = cv2.getPerspectiveTransform(src_points, dst_points)
-
-            # Bild laden und transformieren
-            img_cv = cv2.imread(self.filename)
-            if img_cv is None:
-                self.info.text = "Fehler beim Laden des Fotos"
-                return
-
-            warped = cv2.warpPerspective(img_cv, matrix, (width, height))
+            # Skalieren (Standardgröße)
+            corrected = cropped.resize((400, 600), PILImage.Resampling.LANCZOS)
 
             # Speichern und anzeigen
-            cv2.imwrite("korrigiert.png", warped)
+            corrected.save("korrigiert.png")
 
             self.image.source = "korrigiert.png"
             self.image.reload()
             self.image.points = []
             self.image.redraw_shapes()
 
-            self.info.text = "Entzerrung abgeschlossen!"
+            self.info.text = "Zuschnitt abgeschlossen!"
         except Exception as e:
             self.info.text = f"Fehler: {str(e)}"
 
