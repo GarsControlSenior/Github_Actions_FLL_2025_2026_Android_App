@@ -8,11 +8,13 @@ import math
 from kivy.uix.label import Label
 from PIL import Image as PILImage
 
-# Neu: Imports für Android-Berechtigungen. Nutzt try-except für Desktop-Tests.
+# Imports für Android-Berechtigungen
 try:
     from android.permissions import request_permissions, Permission
+    PERMISSIONS = [Permission.CAMERA, Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE]
 except ImportError:
-    request_permissions = None # Platzhalter für Desktop-Systeme
+    request_permissions = None
+    PERMISSIONS = []
 
 class TouchImage(Image):
     def __init__(self, **kwargs):
@@ -74,50 +76,63 @@ class TouchImage(Image):
 
 class CameraApp(App):
     def build(self):
-        root = BoxLayout(orientation="vertical")
+        # Berechtigungen beim Start anfordern
+        if request_permissions:
+            request_permissions(PERMISSIONS)
+
+        # Root Layout
+        self.root_layout = BoxLayout(orientation="vertical")
 
         # Info Label oben
         self.info = Label(text="Bitte mache ein Foto", size_hint_y=0.1, bold=True)
-        root.add_widget(self.info)
+        self.root_layout.add_widget(self.info)
 
-        # Kamera
+        # Kamera mit Rotation (90 Grad nach rechts = -90)
         self.camera = Camera(play=True, resolution=(640, 480))
-        root.add_widget(self.camera)
+        self.camera.rotation = -90  # 90 Grad nach rechts
+        self.camera.size_hint_y = 0.7  # Kamera füllt 70% der Höhe
+        self.root_layout.add_widget(self.camera)
 
         # Buttons
-        btn_layout = BoxLayout(size_hint_y=0.15, spacing=5, padding=5)
+        self.btn_layout = BoxLayout(size_hint_y=0.2, spacing=5, padding=5)
         
         btn_photo = Button(text="Foto aufnehmen")
         btn_photo.bind(on_press=self.take_photo)
-        btn_layout.add_widget(btn_photo)
+        self.btn_layout.add_widget(btn_photo)
 
-        btn_correct = Button(text="Entzerrung beginnen")
+        btn_correct = Button(text="Zuschnitt anwenden")
         btn_correct.bind(on_press=self.correct_image)
-        btn_layout.add_widget(btn_correct)
+        self.btn_layout.add_widget(btn_correct)
 
         btn_reset = Button(text="Zurück")
         btn_reset.bind(on_press=self.reset)
-        btn_layout.add_widget(btn_reset)
+        self.btn_layout.add_widget(btn_reset)
 
-        root.add_widget(btn_layout)
+        self.root_layout.add_widget(self.btn_layout)
 
-        # Bild-Widget (für angeklickte Punkte)
-        self.image = TouchImage(allow_stretch=True, keep_ratio=True)
-        root.add_widget(self.image)
-
-        return root
+        # Bild-Widget (initial versteckt)
+        self.image = TouchImage(allow_stretch=True, keep_ratio=False)
+        self.image.size_hint_y = 0.7
+        # Nicht hinzufügen, wird bei Bedarf angezeigt
+        
+        return self.root_layout
 
     def take_photo(self, *args):
-        """Foto aufnehmen und anzeigen"""
+        """Foto aufnehmen und Vollbild-Anzeige zeigen"""
         self.filename = "foto.png"
         try:
             self.camera.export_to_png(self.filename)
+            
+            # Verstecke Kamera und Buttons, zeige Bild
+            self.root_layout.remove_widget(self.camera)
+            self.root_layout.remove_widget(self.btn_layout)
+            
+            # Füge Bild hinzu
             self.image.source = self.filename
             self.image.reload()
-            
-            # Punkte zurücksetzen
             self.image.points = []
             self.image.redraw_shapes()
+            self.root_layout.insert_widget(1, self.image)  # Nach Info Label
             
             self.info.text = "Bitte wählen Sie 4 Punkte aus"
         except Exception as e:
@@ -169,7 +184,17 @@ class CameraApp(App):
 
     def reset(self, *args):
         """Zurück zum Kamera-View"""
+        # Entferne Bild und Buttons
+        if self.image.parent:
+            self.root_layout.remove_widget(self.image)
+        if self.btn_layout.parent:
+            self.root_layout.remove_widget(self.btn_layout)
+        
+        # Zeige Kamera und Buttons wieder
         self.camera.play = True
+        self.root_layout.insert_widget(1, self.camera)  # Nach Info Label
+        self.root_layout.add_widget(self.btn_layout)
+        
         self.image.source = ""
         self.image.points = []
         self.image.redraw_shapes()
