@@ -3,6 +3,8 @@
 # (str) Title of your application
 title = Forschung
 
+
+
 # (str) Package name
 package.name = forschung
 
@@ -22,7 +24,7 @@ source.include_exts = py,png,jpg,kv,atlas
 #source.exclude_dirs = tests, bin, venv
 
 # (str) Application versioning (method 1)
-version = 0.6
+version = 0.7
 
 # (list) Application requirements
 # HINWEIS: 'android' ZWINGEND hinzugefügt, 'pillow' für Ihre Bildverarbeitung bestätigt.
@@ -81,11 +83,15 @@ android.allow_backup = True
 # (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))
 log_level = 2
 
+
 # (int) Display warning if buildozer is run as root (0 = False, 1 = True)
 warn_on_root = 1
 
 # (str) Path to build artifact storage, absolute or relative to spec file
 # build_dir = ./.buildozer
+android.permissions = CAMERA, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
+android.api = 33
+
 
 # (str) Path to build output (i.e. .apk, .aab, .ipa) storage
 # bin_dir = ./bin
