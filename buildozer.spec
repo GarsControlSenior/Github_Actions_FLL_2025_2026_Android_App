@@ -24,11 +24,11 @@ source.include_exts = py,png,jpg,kv,atlas
 #source.exclude_dirs = tests, bin, venv
 
 # (str) Application versioning (method 1)
-version = 0.7.1
+version = 0.7.2
 
 # (list) Application requirements
 # HINWEIS: 'android' ZWINGEND hinzugefügt, 'pillow' für Ihre Bildverarbeitung bestätigt.
-requirements = python3,kivy,android,pillow,plyer,opencv-python,numpy
+requirements = python3,kivy,android,pillow,plyer
 
 # (list) Supported orientations
 orientation = portrait
@@ -42,7 +42,7 @@ fullscreen = 0
 
 # (list) Permissions
 # Kamera und Speicherzugriff für das Speichern von 'foto.png'
-android.permissions = CAMERA, WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
+android.permissions = CAMERA, WRITE_EXTERNAL_STORAGE
 
 # (int) Target Android API, should be as high as possible.
 # ZWINGEND AUF MINDESTENS 33 ERHÖHT (Bessere Gradle-Stabilität und Google Play Store-Anforderungen)
