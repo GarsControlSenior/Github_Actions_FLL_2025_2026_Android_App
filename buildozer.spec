@@ -8,7 +8,7 @@ package.domain = forschung.test
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 
-version = 0.7
+version = 0.7.5
 
 # 🔑 WICHTIG: pyjnius für Android-Intent
 requirements = python3,kivy,pyjnius,plyer,pillow
