@@ -8,10 +8,10 @@ package.domain = forschung.test
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 
-version = 0.8.1
+version = 0.7.8
 
 # 🔑 WICHTIG: pyjnius für Android-Intent
-requirements = python3,kivy,pyjnius,plyer,pillow,numpy,opencv-python,android
+requirements = python3,kivy,pyjnius,plyer,pillow
 
 orientation = portrait
 fullscreen = 0
@@ -39,12 +39,6 @@ android.manifest_xml_contents = ["<queries><intent><action android:name=\"androi
 #
 p4a.bootstrap = sdl2
 
-# (str) Android logcat filters to use
-android.logcat_filters = *:S python:D
-
-# (list) Gradle dependencies
-# Das ist entscheidend für den FileProvider (androidx)
-android.gradle_dependencies = "androidx.core:core:1.10.1", "androidx.contentpager:contentpager:1.0.0"
 
 [buildozer]
 
