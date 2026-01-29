@@ -1,8 +1,6 @@
-import math
 import os
-from os.path import join, exists
+from os.path import join
 from PIL import Image as PILImage
-
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -13,12 +11,11 @@ from kivy.utils import platform
 from kivy.clock import mainthread
 from kivy.graphics import Color, Ellipse
 
-# Android-spezifische Importe
+# Android Importe
 if platform == 'android':
-    from jnius import autoclass
+    from jnius import autoclass, cast
     from android.permissions import request_permissions, Permission
     from android import activity
-    from android.storage import primary_external_storage_path
 
 class TouchImage(Image):
     def __init__(self, **kwargs):
@@ -27,7 +24,6 @@ class TouchImage(Image):
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos) and len(self.points) < 4:
-            # Speichere relative Koordinaten (0.0 bis 1.0) für Skalierungsunabhängigkeit
             rel_x = (touch.x - self.x) / self.width
             rel_y = (touch.y - self.y) / self.height
             self.points.append((rel_x, rel_y))
@@ -39,7 +35,7 @@ class TouchImage(Image):
         self.canvas.after.clear()
         if not self.points: return
         with self.canvas.after:
-            Color(1, 0, 0) # Rote Punkte für die Markierung
+            Color(1, 0, 0)
             for rx, ry in self.points:
                 px, py = rx * self.width + self.x, ry * self.height + self.y
                 Ellipse(pos=(px - 10, py - 10), size=(20, 20))
@@ -51,11 +47,11 @@ class PreviewScreen(Screen):
         self.touch_img = TouchImage(allow_stretch=True, keep_ratio=True, size_hint_y=0.7)
         
         self.controls = BoxLayout(orientation='vertical', size_hint_y=0.3, spacing=5)
-        self.btn_fix = Button(text="Orthofoto erstellen", background_color=(0, 0.7, 0, 1))
+        self.btn_fix = Button(text="Scan entzerren", background_color=(0, 0.7, 0, 1))
         self.btn_fix.bind(on_press=self.apply_ortho)
-        self.btn_back = Button(text="Neues Foto / Reset")
+        self.btn_back = Button(text="Neues Foto")
         self.btn_back.bind(on_press=self.reset_screen)
-        self.info_label = Label(text="Markiere die 4 Ecken des Belegs", size_hint_y=0.2)
+        self.info_label = Label(text="Markiere die 4 Ecken", size_hint_y=0.2)
         
         self.controls.add_widget(self.btn_fix)
         self.controls.add_widget(self.btn_back)
@@ -74,36 +70,34 @@ class PreviewScreen(Screen):
             self.info_label.text = "Bitte 4 Punkte setzen!"
             return
         try:
+            # Bild laden
             img = PILImage.open(self.touch_img.source)
             w, h = img.size
-            # Koordinatenumrechnung: Kivy (Y=0 unten) zu PIL (Y=0 oben)
             pts = [(p[0]*w, h-(p[1]*h)) for p in self.touch_img.points]
             
-            # Sortierung der Punkte: Oben-Links, Oben-Rechts, Unten-Rechts, Unten-Links
+            # Sortieren
             pts.sort(key=lambda p: p[1])
             top = sorted(pts[:2], key=lambda p: p[0])
             bottom = sorted(pts[2:], key=lambda p: p[0], reverse=True)
             src_pts = top + bottom
             
-            # Zielformat (z.B. 800x1100 Pixel)
             dst_w, dst_h = 800, 1100
             dst_pts = [(0, 0), (dst_w, 0), (dst_w, dst_h), (0, dst_h)]
             
             coeffs = self.find_coeffs(dst_pts, src_pts)
             ortho = img.transform((dst_w, dst_h), PILImage.PERSPECTIVE, coeffs, PILImage.BICUBIC)
             
-            out_path = join(App.get_running_app().user_data_dir, "ortho_result.png")
+            out_path = join(App.get_running_app().user_data_dir, "scan_result.png")
             ortho.save(out_path)
             self.touch_img.source = out_path
             self.touch_img.reload()
             self.touch_img.points = []
             self.touch_img.canvas.after.clear()
-            self.info_label.text = "Orthofoto erfolgreich erstellt!"
+            self.info_label.text = "Perfekt entzerrt!"
         except Exception as e:
             self.info_label.text = f"Fehler: {str(e)[:40]}"
 
     def find_coeffs(self, pa, pb):
-        """Berechnet die Perspektiv-Koeffizienten ohne externe Bibliotheken."""
         matrix = []
         for p1, p2 in zip(pa, pb):
             matrix.append([p1[0], p1[1], 1, 0, 0, 0, -p2[0]*p1[0], -p2[0]*p1[1], p2[0]])
@@ -129,10 +123,13 @@ class MainApp(App):
         self.sm = ScreenManager()
         self.cam_screen = Screen(name='camera_screen')
         layout = BoxLayout(orientation='vertical', padding=50)
-        btn = Button(text="Kamera öffnen", size_hint_y=0.2, background_color=(0.2, 0.6, 1, 1))
-        btn.bind(on_press=self.manage_camera_start)
-        layout.add_widget(Label(text="Beleg-Scanner", font_size='24sp'))
+        btn = Button(text="Native Kamera öffnen", size_hint_y=0.2, background_color=(0.2, 0.6, 1, 1))
+        btn.bind(on_press=self.check_perms)
+        self.status_lbl = Label(text="Bereit", size_hint_y=0.1)
+        
+        layout.add_widget(Label(text="Profi-Scanner", font_size='24sp'))
         layout.add_widget(btn)
+        layout.add_widget(self.status_lbl)
         self.cam_screen.add_widget(layout)
         
         self.preview_screen = PreviewScreen(name='preview_screen')
@@ -141,51 +138,113 @@ class MainApp(App):
         
         if platform == 'android':
             activity.bind(on_activity_result=self.on_result)
-            # Speichere das temporäre Foto im öffentlichen Download-Ordner
-            self.photo_path = join(primary_external_storage_path(), "Download", "temp_scan_image.jpg")
+            self.uri_photo = None # Hier speichern wir die content:// URI
+
         return self.sm
 
-    def manage_camera_start(self, instance):
+    def check_perms(self, instance):
         if platform == 'android':
-            request_permissions([Permission.CAMERA, Permission.WRITE_EXTERNAL_STORAGE, Permission.READ_EXTERNAL_STORAGE], 
-                                callback=self.check_permissions)
+            # Frage alle nötigen Rechte ab
+            perms = [Permission.CAMERA, Permission.WRITE_EXTERNAL_STORAGE, Permission.READ_EXTERNAL_STORAGE]
+            # Für Android 13+ (SDK 33) gibt es Permission.READ_MEDIA_IMAGES (String: 'android.permission.READ_MEDIA_IMAGES')
+            # Buildozer/Python-for-Android kennt das Enum evtl. noch nicht, daher als String sicherheitshalber:
+            if autoclass('android.os.Build$VERSION').SDK_INT >= 33:
+                perms.append('android.permission.READ_MEDIA_IMAGES')
+                
+            request_permissions(perms, self.on_perms)
         else:
-            # Desktop-Simulationsmodus
             self.sm.current = 'preview_screen'
 
-    def check_permissions(self, permissions, grants):
-        if all(grants):
-            self.open_camera_android()
+    def on_perms(self, permissions, grants):
+        # Einfache Prüfung: Wenn Kamera erlaubt ist, versuchen wir es
+        if grants:
+            self.open_native_camera()
+        else:
+            self.status_lbl.text = "Berechtigung fehlt!"
 
-    def open_camera_android(self):
+    def open_native_camera(self):
         try:
+            # Android Klassen
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             Intent = autoclass('android.content.Intent')
             MediaStore = autoclass('android.provider.MediaStore')
-            Uri = autoclass('android.net.Uri')
-            File = autoclass('java.io.File')
-            StrictMode = autoclass('android.os.StrictMode')
+            ContentValues = autoclass('android.content.ContentValues')
             
-            # Deaktiviert die FileUriExposedException für den Intent
-            policy = StrictMode.VmPolicy.Builder().build()
-            StrictMode.setVmPolicy(policy)
+            # 1. ContentResolver holen
+            activity_instance = PythonActivity.mActivity
+            resolver = activity_instance.getContentResolver()
             
+            # 2. Leeren Platz im Medienspeicher (Galerie) reservieren
+            values = ContentValues()
+            values.put(MediaStore.Images.Media.TITLE, "NewScan")
+            values.put(MediaStore.Images.Media.DESCRIPTION, "From Kivy App")
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            
+            # Wir nutzen EXTERNAL_CONTENT_URI - das funktioniert ohne FileProvider!
+            self.uri_photo = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            
+            if not self.uri_photo:
+                self.status_lbl.text = "Fehler: Konnte URI nicht erstellen"
+                return
+
+            # 3. Intent starten mit der sicheren URI
             intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            photo_file = File(self.photo_path)
-            uri = Uri.fromFile(photo_file)
-            intent.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, self.uri_photo)
             
-            # Startet die System-Kamera-App
-            PythonActivity.mActivity.startActivityForResult(intent, 101)
+            # Sicherstellen, dass eine Kamera-App da ist
+            if intent.resolveActivity(activity_instance.getPackageManager()) is not None:
+                activity_instance.startActivityForResult(intent, 999)
+            else:
+                self.status_lbl.text = "Keine Kamera-App gefunden!"
+                
         except Exception as e:
-            print(f"Kamera-Startfehler: {e}")
+            self.status_lbl.text = f"Startfehler: {e}"
 
     @mainthread
     def on_result(self, requestCode, resultCode, intent):
-        if requestCode == 101 and resultCode == -1: # -1 entspricht RESULT_OK
-            self.preview_screen.touch_img.source = self.photo_path
+        # 999 ist unser Kamera-Request Code
+        if requestCode == 999 and resultCode == -1: # -1 = RESULT_OK
+            if self.uri_photo:
+                self.copy_uri_to_local(self.uri_photo)
+                
+    def copy_uri_to_local(self, uri):
+        """Kopiert das Bild vom Content-Speicher in den App-Speicher für Kivy"""
+        try:
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            context = PythonActivity.mActivity
+            resolver = context.getContentResolver()
+            
+            # Input Stream vom System öffnen
+            inp_stream = resolver.openInputStream(uri)
+            
+            # Zieldatei im App-Ordner
+            dest_path = join(self.user_data_dir, "temp_cam_photo.jpg")
+            
+            # Kopieren (Byte für Byte in Python ist langsam, aber OK für 1 Bild)
+            # Effizienter: Java-Klassen nutzen, aber Python 'read' geht auch
+            # Wir lesen alles in den RAM (Vorsicht bei riesigen Bildern, aber meist ok)
+            # Besser: Chunks
+            
+            with open(dest_path, 'wb') as out_file:
+                # Java InputStream lesen ist in Python via jnius tricky. 
+                # Wir nutzen einen simplen Weg: Stream in Python File Object wrappen geht nicht direkt.
+                # Wir lesen Blocks via jnius.
+                
+                buffer = bytearray(4096)
+                while True:
+                    read = inp_stream.read(buffer)
+                    if read == -1: break
+                    out_file.write(buffer[:read])
+            
+            inp_stream.close()
+            
+            # Bild in Kivy anzeigen
+            self.preview_screen.touch_img.source = dest_path
             self.preview_screen.touch_img.reload()
             self.sm.current = 'preview_screen'
+            
+        except Exception as e:
+            self.status_lbl.text = f"Ladefehler: {e}"
 
 if __name__ == "__main__":
     MainApp().run()
