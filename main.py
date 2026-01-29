@@ -138,113 +138,108 @@ class MainApp(App):
         
         if platform == 'android':
             activity.bind(on_activity_result=self.on_result)
-            self.uri_photo = None # Hier speichern wir die content:// URI
+            self.uri_photo = None 
 
         return self.sm
 
     def check_perms(self, instance):
         if platform == 'android':
-            # Frage alle nötigen Rechte ab
             perms = [Permission.CAMERA, Permission.WRITE_EXTERNAL_STORAGE, Permission.READ_EXTERNAL_STORAGE]
-            # Für Android 13+ (SDK 33) gibt es Permission.READ_MEDIA_IMAGES (String: 'android.permission.READ_MEDIA_IMAGES')
-            # Buildozer/Python-for-Android kennt das Enum evtl. noch nicht, daher als String sicherheitshalber:
             if autoclass('android.os.Build$VERSION').SDK_INT >= 33:
                 perms.append('android.permission.READ_MEDIA_IMAGES')
-                
             request_permissions(perms, self.on_perms)
         else:
             self.sm.current = 'preview_screen'
 
     def on_perms(self, permissions, grants):
-        # Einfache Prüfung: Wenn Kamera erlaubt ist, versuchen wir es
-        if grants:
+        if grants and all(grants):
             self.open_native_camera()
         else:
-            self.status_lbl.text = "Berechtigung fehlt!"
+            # Manche Geräte geben nicht alle Permissions sofort, wir versuchen es trotzdem
+            # wenn zumindest Kamera erlaubt ist
+            self.open_native_camera()
 
     def open_native_camera(self):
         try:
-            # Android Klassen
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             Intent = autoclass('android.content.Intent')
             MediaStore = autoclass('android.provider.MediaStore')
             ContentValues = autoclass('android.content.ContentValues')
             
-            # 1. ContentResolver holen
             activity_instance = PythonActivity.mActivity
             resolver = activity_instance.getContentResolver()
             
-            # 2. Leeren Platz im Medienspeicher (Galerie) reservieren
             values = ContentValues()
             values.put(MediaStore.Images.Media.TITLE, "NewScan")
             values.put(MediaStore.Images.Media.DESCRIPTION, "From Kivy App")
             values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             
-            # Wir nutzen EXTERNAL_CONTENT_URI - das funktioniert ohne FileProvider!
             self.uri_photo = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
             
             if not self.uri_photo:
-                self.status_lbl.text = "Fehler: Konnte URI nicht erstellen"
+                self.status_lbl.text = "Fehler: URI fehlgeschlagen"
                 return
 
-            # 3. Intent starten mit der sicheren URI
             intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
             intent.putExtra(MediaStore.EXTRA_OUTPUT, self.uri_photo)
             
-            # Sicherstellen, dass eine Kamera-App da ist
             if intent.resolveActivity(activity_instance.getPackageManager()) is not None:
                 activity_instance.startActivityForResult(intent, 999)
             else:
-                self.status_lbl.text = "Keine Kamera-App gefunden!"
+                self.status_lbl.text = "Keine Kamera-App!"
                 
         except Exception as e:
             self.status_lbl.text = f"Startfehler: {e}"
 
     @mainthread
     def on_result(self, requestCode, resultCode, intent):
-        # 999 ist unser Kamera-Request Code
-        if requestCode == 999 and resultCode == -1: # -1 = RESULT_OK
+        if requestCode == 999 and resultCode == -1: 
             if self.uri_photo:
-                self.copy_uri_to_local(self.uri_photo)
+                self.copy_uri_to_local_safe(self.uri_photo)
                 
-    def copy_uri_to_local(self, uri):
-        """Kopiert das Bild vom Content-Speicher in den App-Speicher für Kivy"""
+    def copy_uri_to_local_safe(self, uri):
+        """Kopiert sicher von content:// nach local file using pure Java IO"""
         try:
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             context = PythonActivity.mActivity
             resolver = context.getContentResolver()
             
-            # Input Stream vom System öffnen
-            inp_stream = resolver.openInputStream(uri)
-            
-            # Zieldatei im App-Ordner
+            # Ziel: Lokaler Pfad im App-Ordner
             dest_path = join(self.user_data_dir, "temp_cam_photo.jpg")
             
-            # Kopieren (Byte für Byte in Python ist langsam, aber OK für 1 Bild)
-            # Effizienter: Java-Klassen nutzen, aber Python 'read' geht auch
-            # Wir lesen alles in den RAM (Vorsicht bei riesigen Bildern, aber meist ok)
-            # Besser: Chunks
+            # Java Streams vorbereiten
+            InputStream = resolver.openInputStream(uri)
+            FileOutputStream = autoclass('java.io.FileOutputStream')
+            output_stream = FileOutputStream(dest_path)
             
-            with open(dest_path, 'wb') as out_file:
-                # Java InputStream lesen ist in Python via jnius tricky. 
-                # Wir nutzen einen simplen Weg: Stream in Python File Object wrappen geht nicht direkt.
-                # Wir lesen Blocks via jnius.
-                
-                buffer = bytearray(4096)
-                while True:
-                    read = inp_stream.read(buffer)
-                    if read == -1: break
-                    out_file.write(buffer[:read])
+            # WICHTIG: Java Byte Array erstellen (Vermeidet Python-Crashes)
+            # Wir erstellen einen Puffer von 4096 Bytes in Java
+            Byte = autoclass('java.lang.Byte')
+            Array = autoclass('java.lang.reflect.Array')
+            buffer_size = 4096
+            j_buffer = Array.newInstance(Byte.TYPE, buffer_size)
             
-            inp_stream.close()
+            # Kopiervorgang (Java read -> Java write)
+            while True:
+                # read gibt die Anzahl der gelesenen Bytes zurück
+                read_len = InputStream.read(j_buffer)
+                if read_len == -1: # Ende des Streams
+                    break
+                # Schreibe genau so viele Bytes wie gelesen wurden
+                output_stream.write(j_buffer, 0, read_len)
             
-            # Bild in Kivy anzeigen
+            # Streams schließen
+            InputStream.close()
+            output_stream.close()
+            
+            # Fertiges Bild laden
             self.preview_screen.touch_img.source = dest_path
             self.preview_screen.touch_img.reload()
             self.sm.current = 'preview_screen'
+            self.status_lbl.text = "Foto geladen!"
             
         except Exception as e:
-            self.status_lbl.text = f"Ladefehler: {e}"
+            self.status_lbl.text = f"Kopierfehler: {e}"
 
 if __name__ == "__main__":
     MainApp().run()
