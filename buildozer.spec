@@ -8,7 +8,7 @@ package.domain = forschung.test
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 
-version = 0.8.2.0
+version = 0.8.3.0
 
 # 🔑 WICHTIG: pyjnius für Android-Intent
 requirements = python3,kivy,pyjnius,plyer,pillow,android, numpy
@@ -22,7 +22,7 @@ fullscreen = 0
 #
 
 # 📷 Kamera-Berechtigung (Popup beim ersten Start)
-android.permissions = CAMERA, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
+android.permissions = CAMERA, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, READ_MEDIA_IMAGES
 
 android.api = 33
 android.minapi = 21
