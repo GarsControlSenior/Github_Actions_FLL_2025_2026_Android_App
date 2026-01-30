@@ -21,7 +21,7 @@ fullscreen = 0
 # ❗ NUR Kamera-Berechtigung
 android.permissions = CAMERA
 
-android.api = 33
+android.api = 32
 android.minapi = 21
 android.ndk_api = 21
 
