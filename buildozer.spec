@@ -9,7 +9,7 @@ source.include_exts = py,png,jpg,kv,atlas
 
 version = 0.7.9
 
-# Alle benötigten Pakete: Kivy für GUI, pyjnius für Java-Brücke, Pillow für Bildbearbeitung
+# Alle benötigten Pakete: Kivy für GUI, pyjnius für Android, Pillow für Bildbearbeitung
 requirements = python3,kivy,pyjnius,Pillow,android
 
 orientation = portrait
@@ -19,8 +19,8 @@ fullscreen = 0
 # ANDROID
 # =========================
 
-# Kamera + Speicher-Berechtigungen
-android.permissions = CAMERA, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
+# Kamera-Berechtigung
+android.permissions = CAMERA
 
 android.api = 32
 android.minapi = 21
