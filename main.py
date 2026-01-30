@@ -1,53 +1,64 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.camera import Camera
+from kivy.uix.button import Button
+from kivy.uix.image import Image
+from kivy.graphics import Color, Ellipse
 from kivy.clock import Clock
-from jnius import autoclass
+import os
 
-class MainApp(App):
+class CameraApp(App):
+
     def build(self):
-        # Leeres Layout (damit App stabil startet)
-        self.layout = BoxLayout()
+        self.root = BoxLayout(orientation='vertical')
 
-        # Kamera erst starten, wenn App wirklich läuft
-        Clock.schedule_once(self.open_camera, 0)
+        # === KAMERA ===
+        self.camera = Camera(play=True, resolution=(640, 480))
+        self.root.add_widget(self.camera)
 
-        return self.layout
+        # === ROTER PUNKT (Overlay) ===
+        with self.camera.canvas.after:
+            Color(1, 0, 0)
+            self.red_dot = Ellipse(size=(80, 80))
 
-    def open_camera(self, dt):
-        try:
-            # === STANDARD ANDROID KAMERA (dein Original-Code) ===
-            PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            Intent = autoclass('android.content.Intent')
-            MediaStore = autoclass('android.provider.MediaStore')
+        Clock.schedule_once(self.update_dot_position, 0)
 
-            activity = PythonActivity.mActivity
-            intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        # === BUTTON ===
+        btn = Button(text="Foto aufnehmen", size_hint_y=0.2)
+        btn.bind(on_press=self.take_picture)
+        self.root.add_widget(btn)
 
-            # WICHTIG: startActivity (nicht startActivityForResult)
-            # → Kamera ist komplett unabhängig & stabil
-            activity.startActivity(intent)
+        return self.root
 
-        except Exception as e:
-            # Falls hier jemals ein Fehler ist → App bleibt offen
-            print("Fehler beim Öffnen der Kamera:", e)
+    def update_dot_position(self, dt):
+        # oben rechts
+        cam_w, cam_h = self.camera.size
+        self.red_dot.pos = (
+            self.camera.x + cam_w - 90,
+            self.camera.y + cam_h - 90
+        )
 
-        # OPTIONAL: Nachbearbeitung vorbereiten
-        Clock.schedule_once(self.safe_after_camera_code, 0)
+    def take_picture(self, instance):
+        # Foto speichern
+        path = os.path.join(self.user_data_dir, "foto.jpg")
+        self.camera.export_to_png(path)
 
-    def safe_after_camera_code(self, dt):
-        """
-        HIER kommt später dein Code mit rotem Punkt rein.
-        Alles ist absichtlich in try/except,
-        damit die App NIEMALS abstürzt.
-        """
-        try:
-            # === DEIN SPÄTERER CODE ===
-            # z.B. Pillow, roter Punkt, etc.
-            print("Nachbearbeitung bereit (hier später roter Punkt)")
+        # Kamera stoppen
+        self.camera.play = False
 
-        except Exception as e:
-            print("Fehler im Nachbearbeitungs-Code:", e)
+        # Anzeige wechseln
+        self.root.clear_widgets()
+        img = Image(source=path, allow_stretch=True, keep_ratio=True)
+        self.root.add_widget(img)
 
+        back_btn = Button(text="Zurück zur Kamera", size_hint_y=0.2)
+        back_btn.bind(on_press=self.restart_camera)
+        self.root.add_widget(back_btn)
+
+    def restart_camera(self, instance):
+        self.root.clear_widgets()
+        self.camera.play = True
+        self.build()
 
 if __name__ == "__main__":
-    MainApp().run()
+    CameraApp().run()
