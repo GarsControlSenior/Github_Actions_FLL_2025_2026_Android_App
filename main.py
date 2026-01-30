@@ -1,64 +1,82 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.camera import Camera
-from kivy.uix.button import Button
 from kivy.uix.image import Image
-from kivy.graphics import Color, Ellipse
 from kivy.clock import Clock
-import os
+from kivy.graphics.texture import Texture
 
-class CameraApp(App):
+from jnius import autoclass, PythonJavaClass, java_method
+from PIL import Image as PILImage, ImageDraw
+import io
+
+# Android Klassen
+PythonActivity = autoclass('org.kivy.android.PythonActivity')
+Intent = autoclass('android.content.Intent')
+MediaStore = autoclass('android.provider.MediaStore')
+Bitmap = autoclass('android.graphics.Bitmap')
+CompressFormat = autoclass('android.graphics.Bitmap$CompressFormat')
+ByteArrayOutputStream = autoclass('java.io.ByteArrayOutputStream')
+
+class CameraListener(PythonJavaClass):
+    __javainterfaces__ = ['org/kivy/android/PythonActivity$ActivityResultListener']
+
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+    @java_method('(IILandroid/content/Intent;)V')
+    def onActivityResult(self, requestCode, resultCode, intent):
+        try:
+            if resultCode == -1 and intent:
+                extras = intent.getExtras()
+                bitmap = extras.get("data")  # Thumbnail
+                self.app.process_image(bitmap)
+        except Exception as e:
+            print("Kamera-Fehler:", e)
+
+class MainApp(App):
 
     def build(self):
-        self.root = BoxLayout(orientation='vertical')
+        self.layout = BoxLayout()
+        self.image = Image(allow_stretch=True, keep_ratio=True)
+        self.layout.add_widget(self.image)
 
-        # === KAMERA ===
-        self.camera = Camera(play=True, resolution=(640, 480))
-        self.root.add_widget(self.camera)
+        Clock.schedule_once(self.open_camera, 0)
+        return self.layout
 
-        # === ROTER PUNKT (Overlay) ===
-        with self.camera.canvas.after:
-            Color(1, 0, 0)
-            self.red_dot = Ellipse(size=(80, 80))
+    def open_camera(self, dt):
+        try:
+            activity = PythonActivity.mActivity
+            self.listener = CameraListener(self)
+            activity.addActivityResultListener(self.listener)
 
-        Clock.schedule_once(self.update_dot_position, 0)
+            intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            activity.startActivityForResult(intent, 0)
+        except Exception as e:
+            print("Fehler beim Starten der Kamera:", e)
 
-        # === BUTTON ===
-        btn = Button(text="Foto aufnehmen", size_hint_y=0.2)
-        btn.bind(on_press=self.take_picture)
-        self.root.add_widget(btn)
+    def process_image(self, bitmap):
+        try:
+            stream = ByteArrayOutputStream()
+            bitmap.compress(CompressFormat.JPEG, 100, stream)
+            data = stream.toByteArray()
 
-        return self.root
+            img = PILImage.open(io.BytesIO(data)).convert("RGB")
+            draw = ImageDraw.Draw(img)
 
-    def update_dot_position(self, dt):
-        # oben rechts
-        cam_w, cam_h = self.camera.size
-        self.red_dot.pos = (
-            self.camera.x + cam_w - 90,
-            self.camera.y + cam_h - 90
-        )
+            # 🔴 Roter Punkt oben rechts
+            r = int(min(img.size) * 0.12)
+            x = img.width - r - 10
+            y = r + 10
+            draw.ellipse((x-r, y-r, x+r, y+r), fill="red")
 
-    def take_picture(self, instance):
-        # Foto speichern
-        path = os.path.join(self.user_data_dir, "foto.jpg")
-        self.camera.export_to_png(path)
+            # Anzeige in Kivy
+            texture = Texture.create(size=img.size)
+            texture.blit_buffer(img.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
+            texture.flip_vertical()
+            self.image.texture = texture
 
-        # Kamera stoppen
-        self.camera.play = False
-
-        # Anzeige wechseln
-        self.root.clear_widgets()
-        img = Image(source=path, allow_stretch=True, keep_ratio=True)
-        self.root.add_widget(img)
-
-        back_btn = Button(text="Zurück zur Kamera", size_hint_y=0.2)
-        back_btn.bind(on_press=self.restart_camera)
-        self.root.add_widget(back_btn)
-
-    def restart_camera(self, instance):
-        self.root.clear_widgets()
-        self.camera.play = True
-        self.build()
+        except Exception as e:
+            print("Bildverarbeitung fehlgeschlagen:", e)
 
 if __name__ == "__main__":
-    CameraApp().run()
+    MainApp().run()
