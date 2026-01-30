@@ -1,77 +1,53 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.image import Image
-from kivy.graphics.texture import Texture
 from kivy.clock import Clock
-
-from jnius import autoclass, PythonJavaClass, java_method
-from PIL import Image as PILImage, ImageDraw
-import io
-
-# Android Klassen
-PythonActivity = autoclass('org.kivy.android.PythonActivity')
-Intent = autoclass('android.content.Intent')
-MediaStore = autoclass('android.provider.MediaStore')
-
-class CameraResultListener(PythonJavaClass):
-    __javainterfaces__ = ['org/kivy/android/PythonActivity$ActivityResultListener']
-
-    def __init__(self, app):
-        super().__init__()
-        self.app = app
-
-    @java_method('(IILandroid/content/Intent;)V')
-    def onActivityResult(self, requestCode, resultCode, intent):
-        if resultCode == -1 and intent is not None:
-            extras = intent.getExtras()
-            bitmap = extras.get("data")  # Thumbnail!
-
-            self.app.process_bitmap(bitmap)
+from jnius import autoclass
 
 class MainApp(App):
     def build(self):
+        # Leeres Layout (damit App stabil startet)
         self.layout = BoxLayout()
-        self.image = Image()
-        self.layout.add_widget(self.image)
 
+        # Kamera erst starten, wenn App wirklich läuft
         Clock.schedule_once(self.open_camera, 0)
+
         return self.layout
 
     def open_camera(self, dt):
-        activity = PythonActivity.mActivity
+        try:
+            # === STANDARD ANDROID KAMERA (dein Original-Code) ===
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Intent = autoclass('android.content.Intent')
+            MediaStore = autoclass('android.provider.MediaStore')
 
-        self.listener = CameraResultListener(self)
-        activity.addActivityResultListener(self.listener)
+            activity = PythonActivity.mActivity
+            intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
 
-        intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-        activity.startActivityForResult(intent, 0)
+            # WICHTIG: startActivity (nicht startActivityForResult)
+            # → Kamera ist komplett unabhängig & stabil
+            activity.startActivity(intent)
 
-    def process_bitmap(self, bitmap):
-        # Bitmap → Bytes
-        stream = autoclass('java.io.ByteArrayOutputStream')()
-        bitmap.compress(
-            autoclass('android.graphics.Bitmap$CompressFormat').JPEG,
-            100,
-            stream
-        )
-        byte_data = stream.toByteArray()
+        except Exception as e:
+            # Falls hier jemals ein Fehler ist → App bleibt offen
+            print("Fehler beim Öffnen der Kamera:", e)
 
-        # Pillow Bild
-        img = PILImage.open(io.BytesIO(byte_data)).convert("RGB")
-        draw = ImageDraw.Draw(img)
+        # OPTIONAL: Nachbearbeitung vorbereiten
+        Clock.schedule_once(self.safe_after_camera_code, 0)
 
-        # Roter Punkt oben rechts
-        r = int(min(img.size) * 0.12)
-        x = img.width - r - 10
-        y = r + 10
-        draw.ellipse((x-r, y-r, x+r, y+r), fill="red")
+    def safe_after_camera_code(self, dt):
+        """
+        HIER kommt später dein Code mit rotem Punkt rein.
+        Alles ist absichtlich in try/except,
+        damit die App NIEMALS abstürzt.
+        """
+        try:
+            # === DEIN SPÄTERER CODE ===
+            # z.B. Pillow, roter Punkt, etc.
+            print("Nachbearbeitung bereit (hier später roter Punkt)")
 
-        # In Kivy anzeigen
-        data = img.tobytes()
-        texture = Texture.create(size=img.size)
-        texture.blit_buffer(data, colorfmt='rgb', bufferfmt='ubyte')
-        texture.flip_vertical()
-        self.image.texture = texture
+        except Exception as e:
+            print("Fehler im Nachbearbeitungs-Code:", e)
+
 
 if __name__ == "__main__":
     MainApp().run()
