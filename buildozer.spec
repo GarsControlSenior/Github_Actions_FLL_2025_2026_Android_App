@@ -7,7 +7,7 @@ package.domain = forschung.test
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 
-version = 0.9.0
+version = 0.9.1
 
 requirements = python3,kivy,pyjnius,pillow,android
 
@@ -28,14 +28,8 @@ android.ndk_api = 21
 android.archs = arm64-v8a, armeabi-v7a
 android.allow_backup = True
 
-# Wichtig, damit Android die Kamera-App findet
-android.manifest_xml_contents = [
-"<queries>
-    <intent>
-        <action android:name=\"android.media.action.IMAGE_CAPTURE\" />
-    </intent>
-</queries>"
-]
+# ⚠️ GANZ WICHTIG: EINE ZEILE, KEINE LISTE
+android.manifest_xml_contents = <queries><intent><action android:name="android.media.action.IMAGE_CAPTURE"/></intent></queries>
 
 # =========================
 # Python for Android
