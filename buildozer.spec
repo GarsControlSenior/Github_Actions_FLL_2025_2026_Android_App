@@ -9,8 +9,7 @@ source.include_exts = py,png,jpg,kv,atlas
 
 version = 0.7.9
 
-# Alle benötigten Pakete: Kivy für GUI, pyjnius für Android, Pillow für Bildbearbeitung
-requirements = python3,kivy,pyjnius,Pillow,android
+requirements = python3,kivy,pyjnius,Pillow
 
 orientation = portrait
 fullscreen = 0
@@ -19,7 +18,6 @@ fullscreen = 0
 # ANDROID
 # =========================
 
-# Kamera-Berechtigung
 android.permissions = CAMERA
 
 android.api = 32
@@ -29,14 +27,9 @@ android.ndk_api = 21
 android.archs = arm64-v8a, armeabi-v7a
 android.allow_backup = True
 
-# Damit die Kamera-App gefunden wird (Android 11+)
 android.manifest_xml_contents = <queries><intent><action android:name="android.media.action.IMAGE_CAPTURE"/></intent></queries>
 
-# =========================
-# Python for Android
-# =========================
 p4a.bootstrap = sdl2
-
 
 [buildozer]
 log_level = 2
