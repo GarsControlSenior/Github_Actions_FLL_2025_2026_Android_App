@@ -9,7 +9,7 @@ source.include_exts = py,png,jpg,kv,atlas
 
 version = 0.7.9
 
-requirements = python3,kivy,pyjnius,Pillow
+requirements = python3,kivy,pyjnius
 
 orientation = portrait
 fullscreen = 0
@@ -26,8 +26,6 @@ android.ndk_api = 21
 
 android.archs = arm64-v8a, armeabi-v7a
 android.allow_backup = True
-
-android.manifest_xml_contents = <queries><intent><action android:name="android.media.action.IMAGE_CAPTURE"/></intent></queries>
 
 p4a.bootstrap = sdl2
 
