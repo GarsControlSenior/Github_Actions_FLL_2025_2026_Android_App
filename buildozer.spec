@@ -9,11 +9,12 @@ source.include_exts = py
 
 version = 0.1
 
-requirements = python3,kivy,pyjnius
+requirements = python3,kivy,plyer
 
 orientation = portrait
 fullscreen = 0
 
+# Android BLE Berechtigungen
 android.permissions = BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION
 
 android.api = 32
