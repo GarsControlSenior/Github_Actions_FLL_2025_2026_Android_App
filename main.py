@@ -4,15 +4,17 @@ from kivy.clock import Clock
 from kivy.graphics import Line, Color, PushMatrix, PopMatrix, Rotate
 from kivy.uix.label import Label
 from jnius import autoclass, cast, PythonJavaClass, java_method
-from math import radians
 
 # Android BLE Klassen
 BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
-BluetoothManager = autoclass('android.bluetooth.BluetoothManager')
 PythonActivity = autoclass('org.kivy.android.PythonActivity')
+BluetoothManager = autoclass('android.bluetooth.BluetoothManager')
+BluetoothDevice = autoclass('android.bluetooth.BluetoothDevice')
 BluetoothGattCharacteristic = autoclass('android.bluetooth.BluetoothGattCharacteristic')
+BluetoothGattDescriptor = autoclass('android.bluetooth.BluetoothGattDescriptor')
 BluetoothGatt = autoclass('android.bluetooth.BluetoothGatt')
 UUID = autoclass('java.util.UUID')
+Build = autoclass('android.os.Build')
 
 SERVICE_UUID = "0000180C-0000-1000-8000-00805f9b34fb"
 CHAR_UUID = "00002A57-0000-1000-8000-00805f9b34fb"
@@ -20,7 +22,7 @@ CHAR_UUID = "00002A57-0000-1000-8000-00805f9b34fb"
 class CompassWidget(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.heading = 0  # aktueller Winkel
+        self.heading = 0
         with self.canvas:
             Color(1, 0, 0)
             PushMatrix()
@@ -29,16 +31,14 @@ class CompassWidget(Widget):
                                      self.center_x, self.center_y + 150], width=4)
             PopMatrix()
 
-        # Label für Gradzahl
         self.label = Label(text="0°", font_size=30, pos=(20, self.height - 50))
         self.add_widget(self.label)
 
     def update_arrow(self, dt):
-        # Pfeil rotieren
         self.rot.angle = self.heading
-        # Gradzahl anzeigen
         self.label.text = f"{int(self.heading)}°"
 
+# BLE Callback
 class MyGattCallback(PythonJavaClass):
     __javainterfaces__ = ['android/bluetooth/BluetoothGattCallback']
     __javacontext__ = 'app'
@@ -58,7 +58,7 @@ class MyGattCallback(PythonJavaClass):
         char = service.getCharacteristic(UUID.fromString(CHAR_UUID))
         gatt.setCharacteristicNotification(char, True)
         descriptor = char.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
-        descriptor.setValue(BluetoothGattCharacteristic.ENABLE_NOTIFICATION_VALUE)
+        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
         gatt.writeDescriptor(descriptor)
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V')
@@ -70,30 +70,35 @@ class CompassApp(App):
     def build(self):
         self.compass = CompassWidget()
         Clock.schedule_interval(self.compass.update_arrow, 0.1)
-        Clock.schedule_once(self.setup_ble, 1)
+        Clock.schedule_once(self.start_scan, 1)
         return self.compass
 
-    def setup_ble(self, dt):
+    def start_scan(self, dt):
         activity = PythonActivity.mActivity
-        service = activity.getSystemService(activity.BLUETOOTH_SERVICE)
-        manager = cast('android.bluetooth.BluetoothManager', service)
+        manager = cast('android.bluetooth.BluetoothManager', activity.getSystemService(activity.BLUETOOTH_SERVICE))
         adapter = manager.getAdapter()
-
         if not adapter.isEnabled():
             adapter.enable()
 
-        paired_devices = adapter.getBondedDevices().toArray()
-        target_device = None
-        for d in paired_devices:
-            if "NanoCompass" in d.getName():
-                target_device = d
-                break
+        # Start Scan (für Android 12+)
+        self.scan_callback = self.ScanCallback(self)
+        self.scanner = adapter.getBluetoothLeScanner()
+        self.scanner.startScan(self.scan_callback)
 
-        if target_device:
-            callback = MyGattCallback(self)
-            self.gatt = target_device.connectGatt(activity, False, callback)
-        else:
-            print("Arduino BLE Gerät nicht gefunden!")
+    class ScanCallback(PythonJavaClass):
+        __javainterfaces__ = ['android/bluetooth/le/ScanCallback']
+        __javacontext__ = 'app'
 
-if __name__ == '__main__':
-    CompassApp().run()
+        def __init__(self, app):
+            super().__init__()
+            self.app = app
+
+        @java_method('(I, [Landroid/bluetooth/le/ScanResult;)V')
+        def onScanResult(self, callbackType, result_array):
+            for result in result_array:
+                device = result.getDevice()
+                if "NanoCompass" in device.getName():
+                    print("Arduino gefunden!")
+                    self.app.scanner.stopScan(self)
+                    callback = MyGattCallback(self.app)
+                    self.app.gatt = device.connectGatt(PythonActivity.mActivity, False, callback)
