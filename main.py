@@ -1,7 +1,7 @@
 from kivy.app import App
 from kivy.uix.widget import Widget
-from kivy.uix.image import Image
 from kivy.clock import Clock
+from kivy.graphics import Line, Color, PushMatrix, PopMatrix, Rotate
 from jnius import autoclass, cast, PythonJavaClass, java_method
 from math import radians
 
@@ -9,7 +9,6 @@ from math import radians
 BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
 BluetoothManager = autoclass('android.bluetooth.BluetoothManager')
 PythonActivity = autoclass('org.kivy.android.PythonActivity')
-BluetoothGattCallback = autoclass('android.bluetooth.BluetoothGattCallback')
 BluetoothGattCharacteristic = autoclass('android.bluetooth.BluetoothGattCharacteristic')
 BluetoothGatt = autoclass('android.bluetooth.BluetoothGatt')
 UUID = autoclass('java.util.UUID')
@@ -20,12 +19,17 @@ CHAR_UUID = "00002A57-0000-1000-8000-00805f9b34fb"
 class CompassWidget(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.arrow = Image(source='arrow.png', center=self.center)
-        self.add_widget(self.arrow)
         self.heading = 0
+        with self.canvas:
+            Color(1, 0, 0)
+            PushMatrix()
+            self.rot = Rotate(angle=0, origin=self.center)
+            # Linie als Pfeil nach oben
+            Line(points=[self.center_x, self.center_y, self.center_x, self.center_y + 150], width=4)
+            PopMatrix()
 
     def update_arrow(self, dt):
-        self.arrow.angle = self.heading
+        self.rot.angle = self.heading
 
 # BLE Callback Klasse
 class MyGattCallback(PythonJavaClass):
@@ -46,14 +50,13 @@ class MyGattCallback(PythonJavaClass):
         service = gatt.getService(UUID.fromString(SERVICE_UUID))
         char = service.getCharacteristic(UUID.fromString(CHAR_UUID))
         gatt.setCharacteristicNotification(char, True)
-        # Descriptor für Notifications
         descriptor = char.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
-        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+        descriptor.setValue(BluetoothGattCharacteristic.ENABLE_NOTIFICATION_VALUE)
         gatt.writeDescriptor(descriptor)
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V')
     def onCharacteristicChanged(self, gatt, characteristic):
-        value = characteristic.getFloatValue(0)  # Empfangenes Float
+        value = characteristic.getFloatValue(0)  # Float-Wert vom Arduino
         self.app.compass.heading = value
 
 class CompassApp(App):
@@ -75,7 +78,7 @@ class CompassApp(App):
         paired_devices = adapter.getBondedDevices().toArray()
         target_device = None
         for d in paired_devices:
-            if "NanoCompass" in d.getName():  # Name vom Arduino
+            if "NanoCompass" in d.getName():  # Name Arduino BLE
                 target_device = d
                 break
 
