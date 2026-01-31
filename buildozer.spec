@@ -1,44 +1,45 @@
 [app]
 
-# App-Name (wird auf dem Handy angezeigt)
+# App-Name (Anzeige auf dem Handy)
 title = Archälogie
 
-# Paketname (muss klein bleiben!)
+# Paketname (muss klein & ohne Umlaute sein!)
 package.name = archaelogie
 
-# Domain
+# Domain (frei wählbar)
 package.domain = org.example
 
-# Pfad zu main.py
+# Quellcode
 source.dir = .
 source.include_exts = py
 
 # Version
 version = 1.0
 
-# Python / Kivy
+# Python / Kivy / Android
 requirements = python3,kivy,pyjnius
 
-# Startdatei
+# Einstiegspunkt
 entrypoint = main.py
 
-# Bildschirm
+# Anzeige
 fullscreen = 1
 orientation = portrait
 
-# Android Einstellungen
+# Android SDK
 android.api = 33
 android.minapi = 26
 android.sdk = 33
 android.ndk = 25b
 
-# Berechtigungen
+# ❗ WICHTIG: Berechtigungen
 android.permissions = CAMERA
 
-# Logs
+# Debug / Logs
 android.logcat_filters = *:S python:D
 
 # Architektur
 android.archs = arm64-v8a
 
+# Buildozer
 warn_on_root = 1
