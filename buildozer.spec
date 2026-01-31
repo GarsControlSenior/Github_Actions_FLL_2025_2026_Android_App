@@ -1,15 +1,16 @@
 [app]
-
 title = CompassApp
 package.name = compass
 package.domain = org.example
 
+source.dir = .
 source.include_exts = py,png,kv
 
 requirements = kivy, pyjnius
 
-android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT, BLUETOOTH_SCAN, ACCESS_FINE_LOCATION
+version = 1.0
 
+android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT, BLUETOOTH_SCAN, ACCESS_FINE_LOCATION
 android.api = 33
 android.minapi = 26
-android.sdk = 32
+android.sdk = 33
