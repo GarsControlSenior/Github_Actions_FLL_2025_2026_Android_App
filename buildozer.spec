@@ -14,7 +14,6 @@ requirements = python3,kivy,pyjnius
 orientation = portrait
 fullscreen = 0
 
-# Android BLE Berechtigungen
 android.permissions = BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION
 
 android.api = 32
