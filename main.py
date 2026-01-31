@@ -1,103 +1,53 @@
 from kivy.app import App
-from kivy.uix.widget import Widget
-from kivy.clock import Clock
-from kivy.graphics import Line, Color, PushMatrix, PopMatrix, Rotate
+from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
-from jnius import autoclass, cast, PythonJavaClass, java_method
+from kivy.uix.button import Button
+from kivy.core.window import Window
+from jnius import autoclass
 
-# ------------------- Android BLE Klassen -------------------
-BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
-PythonActivity = autoclass('org.kivy.android.PythonActivity')
-BluetoothGattCharacteristic = autoclass('android.bluetooth.BluetoothGattCharacteristic')
-BluetoothGattDescriptor = autoclass('android.bluetooth.BluetoothGattDescriptor')
-BluetoothGatt = autoclass('android.bluetooth.BluetoothGatt')
-UUID = autoclass('java.util.UUID')
 
-SERVICE_UUID = "0000180C-0000-1000-8000-00805f9b34fb"
-CHAR_UUID = "00002A57-0000-1000-8000-00805f9b34fb"
-
-# ------------------- Widget für Pfeil + Gradzahl -------------------
-class CompassWidget(Widget):
+class StartScreen(BoxLayout):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.heading = 0
-        with self.canvas:
-            Color(1, 0, 0)
-            PushMatrix()
-            self.rot = Rotate(angle=0, origin=self.center)
-            self.line = Line(points=[self.center_x, self.center_y,
-                                     self.center_x, self.center_y + 150], width=4)
-            PopMatrix()
+        super().__init__(orientation="vertical", spacing=30, padding=40, **kwargs)
 
-        self.label = Label(text="0°", font_size=30, pos=(20, self.height - 50))
-        self.add_widget(self.label)
+        # Schwarzer Hintergrund
+        Window.clearcolor = (0, 0, 0, 1)
 
-    def update_arrow(self, dt):
-        self.rot.angle = self.heading
-        self.label.text = f"{int(self.heading)}°"
+        # Text
+        question = Label(
+            text="Möchten Sie die App mit dem Arduino durchführen?",
+            color=(1, 1, 1, 1),
+            font_size=24,
+            halign="center",
+            valign="middle"
+        )
+        question.bind(size=question.setter("text_size"))
 
-# ------------------- BLE Callback -------------------
-class MyGattCallback(PythonJavaClass):
-    __javainterfaces__ = ['android/bluetooth/BluetoothGattCallback']
-    __javacontext__ = 'app'
+        # Buttons
+        btn_yes = Button(text="Ja", font_size=22, size_hint=(1, 0.25))
+        btn_no = Button(text="Nein", font_size=22, size_hint=(1, 0.25))
 
-    def __init__(self, app):
-        super().__init__()
-        self.app = app
+        btn_yes.bind(on_press=self.open_camera)
+        btn_no.bind(on_press=self.open_camera)
 
-    @java_method('(Landroid/bluetooth/BluetoothGatt;I)V')
-    def onConnectionStateChange(self, gatt, status, newState):
-        if newState == 2:  # Connected
-            gatt.discoverServices()
+        self.add_widget(question)
+        self.add_widget(btn_yes)
+        self.add_widget(btn_no)
 
-    @java_method('(Landroid/bluetooth/BluetoothGatt;I)V')
-    def onServicesDiscovered(self, gatt, status):
-        service = gatt.getService(UUID.fromString(SERVICE_UUID))
-        char = service.getCharacteristic(UUID.fromString(CHAR_UUID))
-        gatt.setCharacteristicNotification(char, True)
-        descriptor = char.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
-        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-        gatt.writeDescriptor(descriptor)
+    def open_camera(self, instance):
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        Intent = autoclass('android.content.Intent')
+        MediaStore = autoclass('android.provider.MediaStore')
 
-    @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V')
-    def onCharacteristicChanged(self, gatt, characteristic):
-        value = characteristic.getFloatValue(0)
-        self.app.compass.heading = value
-
-# ------------------- App -------------------
-class CompassApp(App):
-    def build(self):
-        self.compass = CompassWidget()
-        Clock.schedule_interval(self.compass.update_arrow, 0.1)
-        Clock.schedule_once(self.connect_paired_device, 1)
-        return self.compass
-
-    def connect_paired_device(self, dt):
         activity = PythonActivity.mActivity
-        manager = cast('android.bluetooth.BluetoothManager', activity.getSystemService(activity.BLUETOOTH_SERVICE))
-        adapter = manager.getAdapter()
+        intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        activity.startActivity(intent)
 
-        if not adapter.isEnabled():
-            adapter.enable()
 
-        paired_devices = adapter.getBondedDevices().toArray()
-        target_device = None
+class MainApp(App):
+    def build(self):
+        return StartScreen()
 
-        # <- HIER den Namen deines Arduino eintragen:
-        target_name = "NanoCompass"  # <-- falls dein Gerät anders heißt, ändern!
 
-        for d in paired_devices:
-            if target_name in d.getName():
-                target_device = d
-                break
-
-        if target_device:
-            callback = MyGattCallback(self)
-            self.gatt = target_device.connectGatt(activity, False, callback)
-            print("Verbunden mit Arduino!")
-        else:
-            print(f"Kein gepaartes Gerät mit Name {target_name} gefunden!")
-
-# ------------------- Start -------------------
-if __name__ == '__main__':
-    CompassApp().run()
+if __name__ == "__main__":
+    MainApp().run()
