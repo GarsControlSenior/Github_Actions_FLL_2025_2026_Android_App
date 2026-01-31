@@ -4,7 +4,7 @@ package.name = compass
 package.domain = org.example
 
 source.dir = .
-source.include_exts = py,png,kv
+source.include_exts = py,kv
 
 requirements = kivy, pyjnius
 
