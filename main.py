@@ -3,16 +3,22 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle, Line
 from kivy.clock import Clock
 from kivy.uix.label import Label
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from jnius import autoclass, cast, PythonJavaClass, java_method
 
-from jnius import autoclass, PythonJavaClass, java_method
+import struct
+import math
 
 # Android BLE Klassen
 BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
 BluetoothManager = autoclass('android.bluetooth.BluetoothManager')
 PythonActivity = autoclass('org.kivy.android.PythonActivity')
 UUID = autoclass('java.util.UUID')
+BluetoothDevice = autoclass('android.bluetooth.BluetoothDevice')
+BluetoothGattCallback = autoclass('android.bluetooth.BluetoothGattCallback')
 
-# UUIDs Arduino
+# UUIDs Arduino BLE
 SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab"
 CHAR_UUID = "abcdefab-1234-1234-1234-abcdefabcdef"
 
@@ -45,7 +51,6 @@ class CompassWidget(Widget):
     def update_arrow(self, dt):
         cx, cy = self.center
         length = min(self.width, self.height)*0.4
-        import math
         angle_rad = -math.radians(self.heading)
         x_end = cx + length * math.sin(angle_rad)
         y_end = cy + length * math.cos(angle_rad)
@@ -55,30 +60,47 @@ class CompassWidget(Widget):
 class MainApp(App):
     def build(self):
         self.widget = CompassWidget()
-        # Nach App Start BLE Verbindung starten
+        # Starte BLE Scan nach Start
         Clock.schedule_once(lambda dt: self.start_ble(), 1)
         return self.widget
 
     def start_ble(self):
-        # BLE Verbindung hier implementieren
-        # 1. Adapter holen
+        # Adapter holen
         activity = PythonActivity.mActivity
-        context = activity.getSystemService(activity.BLUETOOTH_SERVICE)
-        adapter = context.getAdapter()
-        if not adapter.isEnabled():
-            adapter.enable()
+        manager = cast('android.bluetooth.BluetoothManager', activity.getSystemService(activity.BLUETOOTH_SERVICE))
+        self.adapter = manager.getAdapter()
+        if not self.adapter.isEnabled():
+            self.adapter.enable()
         print("BLE Adapter aktiv")
 
-        # ⚠ Hier müsstest du mit Java BLE API den Arduino finden,
-        # verbinden und Characteristic lesen.
-        # Python-only auf Android: pyjnius -> BluetoothGatt
-        # Für Live-Demo: wir simulieren weiter
-        Clock.schedule_interval(lambda dt: self.simulate_ble(), 0.2)
+        # Scan starten
+        self.adapter.startLeScan(self.scan_callback)
 
-    def simulate_ble(self):
-        # ⚠ Später hier echte Heading-Werte vom Arduino setzen
-        import random
-        self.widget.heading = (self.widget.heading + random.uniform(-1,1)) % 360
+    # Callback für Scan
+    def scan_callback(self, device, rssi, scanRecord):
+        name = device.getName()
+        if name and "Nano33Compass" in name:
+            print("Arduino gefunden:", name)
+            self.adapter.stopLeScan(self.scan_callback)
+            self.connect_device(device)
+
+    def connect_device(self, device):
+        gatt = device.connectGatt(PythonActivity.mActivity, False, self.GattCallback(self.widget))
+        print("Verbindung gestartet")
+
+    class GattCallback(PythonJavaClass):
+        __javainterfaces__ = ['android/bluetooth/BluetoothGattCallback']
+        def __init__(self, widget):
+            super().__init__()
+            self.widget = widget
+
+        @java_method('(Landroid/bluetooth/BluetoothGatt;I)V')
+        def onServicesDiscovered(self, gatt, status):
+            # Hier später Characteristic lesen
+            pass
+
+        # Du kannst hier onCharacteristicChanged implementieren, um Heading zu lesen
+        # self.widget.heading = heading_from_arduino
 
 if __name__ == "__main__":
     MainApp().run()
