@@ -1,29 +1,15 @@
 [app]
 
 title = CompassApp
-package.name = compassapp
-package.domain = test.compass
+package.name = compass
+package.domain = org.example
 
-source.dir = .
-source.include_exts = py
+source.include_exts = py,png,kv
 
-version = 0.1
+requirements = kivy, pyjnius
 
-requirements = python3,kivy,pyjnius
+android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT, BLUETOOTH_SCAN, ACCESS_FINE_LOCATION
 
-orientation = portrait
-fullscreen = 0
-
-android.permissions = BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION
-
-android.api = 32
-android.minapi = 21
-android.ndk_api = 21
-android.archs = arm64-v8a, armeabi-v7a
-android.allow_backup = True
-
-p4a.bootstrap = sdl2
-
-[buildozer]
-log_level = 2
-warn_on_root = 1
+android.api = 33
+android.minapi = 26
+android.sdk = 32
