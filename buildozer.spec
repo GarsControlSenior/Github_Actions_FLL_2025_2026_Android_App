@@ -10,7 +10,8 @@ requirements = kivy, pyjnius
 
 version = 1.0
 
-android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT, BLUETOOTH_SCAN, ACCESS_FINE_LOCATION
+android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION
 android.api = 33
 android.minapi = 26
+
 android.sdk = 33
