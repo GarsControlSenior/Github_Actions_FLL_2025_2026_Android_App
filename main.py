@@ -3,22 +3,18 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle, Line
 from kivy.clock import Clock
 from kivy.uix.label import Label
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
 from jnius import autoclass, cast, PythonJavaClass, java_method
 
-import struct
 import math
 
 # Android BLE Klassen
-BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
-BluetoothManager = autoclass('android.bluetooth.BluetoothManager')
 PythonActivity = autoclass('org.kivy.android.PythonActivity')
-UUID = autoclass('java.util.UUID')
+BluetoothManager = autoclass('android.bluetooth.BluetoothManager')
+BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
 BluetoothDevice = autoclass('android.bluetooth.BluetoothDevice')
-BluetoothGattCallback = autoclass('android.bluetooth.BluetoothGattCallback')
+UUID = autoclass('java.util.UUID')
 
-# UUIDs Arduino BLE
+# Arduino BLE UUIDs
 SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab"
 CHAR_UUID = "abcdefab-1234-1234-1234-abcdefabcdef"
 
@@ -50,7 +46,7 @@ class CompassWidget(Widget):
 
     def update_arrow(self, dt):
         cx, cy = self.center
-        length = min(self.width, self.height)*0.4
+        length = min(self.width, self.height) * 0.4
         angle_rad = -math.radians(self.heading)
         x_end = cx + length * math.sin(angle_rad)
         y_end = cy + length * math.cos(angle_rad)
@@ -60,47 +56,51 @@ class CompassWidget(Widget):
 class MainApp(App):
     def build(self):
         self.widget = CompassWidget()
-        # Starte BLE Scan nach Start
-        Clock.schedule_once(lambda dt: self.start_ble(), 1)
+        Clock.schedule_once(lambda dt: self.init_ble(), 1)
         return self.widget
 
-    def start_ble(self):
-        # Adapter holen
+    def init_ble(self):
         activity = PythonActivity.mActivity
         manager = cast('android.bluetooth.BluetoothManager', activity.getSystemService(activity.BLUETOOTH_SERVICE))
         self.adapter = manager.getAdapter()
         if not self.adapter.isEnabled():
             self.adapter.enable()
-        print("BLE Adapter aktiv")
 
-        # Scan starten
-        self.adapter.startLeScan(self.scan_callback)
+        # Scan nach Arduino starten
+        self.adapter.startLeScan(self.ble_scan_callback)
 
-    # Callback für Scan
-    def scan_callback(self, device, rssi, scanRecord):
+    # BLE Scan Callback
+    def ble_scan_callback(self, device, rssi, scanRecord):
         name = device.getName()
         if name and "Nano33Compass" in name:
             print("Arduino gefunden:", name)
-            self.adapter.stopLeScan(self.scan_callback)
-            self.connect_device(device)
+            self.adapter.stopLeScan(self.ble_scan_callback)
+            self.connect_gatt(device)
 
-    def connect_device(self, device):
+    def connect_gatt(self, device):
+        # Verbindung aufbauen über GATT
         gatt = device.connectGatt(PythonActivity.mActivity, False, self.GattCallback(self.widget))
-        print("Verbindung gestartet")
 
     class GattCallback(PythonJavaClass):
         __javainterfaces__ = ['android/bluetooth/BluetoothGattCallback']
+
         def __init__(self, widget):
             super().__init__()
             self.widget = widget
 
-        @java_method('(Landroid/bluetooth/BluetoothGatt;I)V')
+        @java_method('(Landroid/bluetooth/BluetoothGatt;II)V')
         def onServicesDiscovered(self, gatt, status):
-            # Hier später Characteristic lesen
+            # Hier Characteristic lesen
             pass
 
-        # Du kannst hier onCharacteristicChanged implementieren, um Heading zu lesen
-        # self.widget.heading = heading_from_arduino
+        @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V')
+        def onCharacteristicChanged(self, gatt, characteristic):
+            # Hier echtes Heading
+            bytes_value = characteristic.getValue()
+            if bytes_value is not None and len(bytes_value) >= 4:
+                import struct
+                heading = struct.unpack('f', bytes(bytearray(bytes_value)))[0]
+                self.widget.heading = heading
 
 if __name__ == "__main__":
     MainApp().run()
