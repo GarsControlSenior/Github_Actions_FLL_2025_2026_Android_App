@@ -13,7 +13,7 @@ except ImportError:
     Permission = None
 
 
-# ───────────── Schwarzer Button ─────────────
+# ───────────── Schwarzer Minimal-Button ─────────────
 class BlackButton(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -22,10 +22,14 @@ class BlackButton(Button):
         self.border = (0, 0, 0, 0)
 
 
-# ───────────── Start Screen (1×) ─────────────
+# ───────────── Start Screen (nur beim ersten Start) ─────────────
 class WelcomeScreen(BoxLayout):
-    def __init__(self, app, **kwargs):
-        super().__init__(orientation="vertical", padding=[80, 200, 80, 80], spacing=60)
+    def __init__(self, app):
+        super().__init__(
+            orientation="vertical",
+            padding=[60, 120, 60, 40],  # ≈ 3 cm von oben
+            spacing=40
+        )
         self.app = app
         Window.clearcolor = (0, 0, 0, 1)
 
@@ -58,12 +62,17 @@ class WelcomeScreen(BoxLayout):
 
 # ───────────── Arduino Frage ─────────────
 class QuestionScreen(BoxLayout):
-    def __init__(self, app, **kwargs):
-        super().__init__(orientation="vertical", padding=[60, 180, 60, 60], spacing=60)
+    def __init__(self, app):
+        super().__init__(
+            orientation="vertical",
+            padding=[60, 120, 60, 40],  # Text weit oben
+            spacing=40
+        )
         self.app = app
         Window.clearcolor = (0, 0, 0, 1)
 
-        top = BoxLayout(size_hint=(1, 0.15))
+        # Hilfe oben rechts
+        top = BoxLayout(size_hint=(1, None), height=120)
         top.add_widget(Label())
         help_btn = BlackButton(text="?", font_size=72, size_hint=(None, None), size=(120, 120))
         help_btn.bind(on_press=self.show_help)
@@ -79,7 +88,7 @@ class QuestionScreen(BoxLayout):
         label.bind(size=label.setter("text_size"))
         self.add_widget(label)
 
-        row = BoxLayout(spacing=80, size_hint=(1, 0.25))
+        row = BoxLayout(spacing=80, size_hint=(1, None), height=160)
         btn_yes = BlackButton(text="Ja", font_size=56)
         btn_no = BlackButton(text="Nein", font_size=56)
 
@@ -103,10 +112,14 @@ class QuestionScreen(BoxLayout):
         ).open()
 
 
-# ───────────── Nordrichtung ─────────────
+# ───────────── Nordrichtung Screen (blau) ─────────────
 class NorthScreen(BoxLayout):
-    def __init__(self, app, **kwargs):
-        super().__init__(orientation="vertical", padding=100, spacing=80)
+    def __init__(self, app):
+        super().__init__(
+            orientation="vertical",
+            padding=[60, 120, 60, 40],
+            spacing=60
+        )
         self.app = app
         Window.clearcolor = (0.1, 0.3, 0.8, 1)
 
@@ -174,11 +187,14 @@ class MainApp(App):
         intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         activity.startActivity(intent)
 
-        self.root_box.clear_widgets()
+        # WICHTIG: Screen-Wechsel NICHT hier!
+
         if self.show_north:
+            self.root_box.clear_widgets()
             self.root_box.add_widget(NorthScreen(self))
         else:
-            self.show_question()
+            # bei NEIN Kamera erneut öffnen
+            self.start_camera(False)
 
 
 if __name__ == "__main__":
