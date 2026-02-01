@@ -12,7 +12,6 @@ except ImportError:
     request_permissions = None
     Permission = None
 
-
 # ───────────── Design ─────────────
 DARK_BLUE_BG = (0.05, 0.2, 0.45, 1)
 
@@ -25,14 +24,10 @@ class DarkBlueButton(Button):
         self.border = (0, 0, 0, 0)
 
 
-# ───────────── Willkommen ─────────────
+# ───────────── Willkommen Screen ─────────────
 class WelcomeScreen(BoxLayout):
     def __init__(self, app):
-        super().__init__(
-            orientation="vertical",
-            padding=[60, 720, 60, 40],  # Text weit oben
-            spacing=60
-        )
+        super().__init__(orientation="vertical", spacing=60)
         self.app = app
         Window.clearcolor = DARK_BLUE_BG
 
@@ -40,7 +35,9 @@ class WelcomeScreen(BoxLayout):
             text="Herzlich Willkommen!\n\nVielen Dank, dass Sie diese App ausprobieren.\nLiebe Grüße",
             font_size=64,
             halign="center",
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            size_hint=(1, 0.6),
+            pos_hint={"center_y": 0.6}
         )
         label.bind(size=label.setter("text_size"))
 
@@ -60,19 +57,19 @@ class WelcomeScreen(BoxLayout):
 # ───────────── Nordrichtung Screen ─────────────
 class NorthScreen(BoxLayout):
     def __init__(self, app):
-        super().__init__(
-            orientation="vertical",
-            padding=[60, 720, 60, 40],
-            spacing=60
-        )
+        super().__init__(orientation="vertical", spacing=60)
         self.app = app
         Window.clearcolor = DARK_BLUE_BG
 
         label = Label(
             text="Nordrichtung",
             font_size=80,
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            size_hint=(1, 0.6),
+            pos_hint={"center_y": 0.6},
+            halign="center"
         )
+        label.bind(size=label.setter("text_size"))
 
         btn = DarkBlueButton(
             text="Weiter",
@@ -87,14 +84,10 @@ class NorthScreen(BoxLayout):
         self.add_widget(btn)
 
 
-# ───────────── Arduino-Frage ─────────────
+# ───────────── Arduino-Frage Screen ─────────────
 class QuestionScreen(BoxLayout):
     def __init__(self, app):
-        super().__init__(
-            orientation="vertical",
-            padding=[60, 720, 60, 40],
-            spacing=60
-        )
+        super().__init__(orientation="vertical", spacing=60)
         self.app = app
         Window.clearcolor = DARK_BLUE_BG
 
@@ -115,7 +108,9 @@ class QuestionScreen(BoxLayout):
             text="Möchten Sie die App\nmit dem Arduino durchführen?",
             font_size=72,
             halign="center",
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            size_hint=(1, 0.6),
+            pos_hint={"center_y": 0.6}
         )
         label.bind(size=label.setter("text_size"))
         self.add_widget(label)
@@ -144,7 +139,7 @@ class QuestionScreen(BoxLayout):
         ).open()
 
 
-# ───────────── App ─────────────
+# ───────────── Main App ─────────────
 class MainApp(App):
     def build(self):
         self.root_box = BoxLayout()
@@ -186,7 +181,7 @@ class MainApp(App):
         intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         PythonActivity.mActivity.startActivity(intent)
 
-        # Direkt danach → Nordrichtung nur, wenn gerade JA gedrückt
+        # Nach Rückkehr von Kamera
         if self.show_north_after_camera:
             self.root_box.clear_widgets()
             self.root_box.add_widget(NorthScreen(self))
