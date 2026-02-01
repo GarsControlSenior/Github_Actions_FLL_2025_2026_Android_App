@@ -14,64 +14,59 @@ except ImportError:
 
 
 # ───────────── Design ─────────────
-BLUE_BG = (0.15, 0.35, 0.65, 1)
+DARK_BLUE_BG = (0.05, 0.2, 0.45, 1)
 
 
-class BlueButton(Button):
+class DarkBlueButton(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.background_color = BLUE_BG
+        self.background_color = DARK_BLUE_BG
         self.color = (1, 1, 1, 1)
         self.border = (0, 0, 0, 0)
 
 
-# ───────────── Willkommen (1× nach Installation) ─────────────
+# ───────────── Willkommen ─────────────
 class WelcomeScreen(BoxLayout):
     def __init__(self, app):
         super().__init__(
             orientation="vertical",
-            padding=[60, 420, 60, 40],  # ca. 300px weiter oben
+            padding=[60, 720, 60, 40],  # Text weit oben
             spacing=60
         )
         self.app = app
-        Window.clearcolor = BLUE_BG
+        Window.clearcolor = DARK_BLUE_BG
 
         label = Label(
-            text="Herzlich Willkommen!\n\n"
-                 "Vielen Dank, dass Sie diese App ausprobieren.\n"
-                 "Liebe Grüße",
+            text="Herzlich Willkommen!\n\nVielen Dank, dass Sie diese App ausprobieren.\nLiebe Grüße",
             font_size=64,
             halign="center",
             color=(1, 1, 1, 1)
         )
         label.bind(size=label.setter("text_size"))
 
-        btn = BlueButton(
+        btn = DarkBlueButton(
             text="Weiter",
             font_size=48,
             size_hint=(None, None),
             size=(500, 150)
         )
         btn.pos_hint = {"center_x": 0.5}
-        btn.bind(on_press=self.next)
+        btn.bind(on_press=lambda x: self.app.show_question())
 
         self.add_widget(label)
         self.add_widget(btn)
 
-    def next(self, instance):
-        self.app.show_question()
 
-
-# ───────────── Nordrichtung ─────────────
+# ───────────── Nordrichtung Screen ─────────────
 class NorthScreen(BoxLayout):
     def __init__(self, app):
         super().__init__(
             orientation="vertical",
-            padding=[60, 420, 60, 40],
-            spacing=80
+            padding=[60, 720, 60, 40],
+            spacing=60
         )
         self.app = app
-        Window.clearcolor = BLUE_BG
+        Window.clearcolor = DARK_BLUE_BG
 
         label = Label(
             text="Nordrichtung",
@@ -79,7 +74,7 @@ class NorthScreen(BoxLayout):
             color=(1, 1, 1, 1)
         )
 
-        btn = BlueButton(
+        btn = DarkBlueButton(
             text="Weiter",
             font_size=48,
             size_hint=(None, None),
@@ -97,16 +92,16 @@ class QuestionScreen(BoxLayout):
     def __init__(self, app):
         super().__init__(
             orientation="vertical",
-            padding=[60, 420, 60, 40],
+            padding=[60, 720, 60, 40],
             spacing=60
         )
         self.app = app
-        Window.clearcolor = BLUE_BG
+        Window.clearcolor = DARK_BLUE_BG
 
         # Hilfe oben rechts
         top = BoxLayout(size_hint=(1, None), height=120)
         top.add_widget(Label())
-        help_btn = BlueButton(
+        help_btn = DarkBlueButton(
             text="?",
             font_size=72,
             size_hint=(None, None),
@@ -126,8 +121,8 @@ class QuestionScreen(BoxLayout):
         self.add_widget(label)
 
         row = BoxLayout(spacing=80, size_hint=(1, None), height=160)
-        btn_yes = BlueButton(text="Ja", font_size=56)
-        btn_no = BlueButton(text="Nein", font_size=56)
+        btn_yes = DarkBlueButton(text="Ja", font_size=56)
+        btn_no = DarkBlueButton(text="Nein", font_size=56)
 
         btn_yes.bind(on_press=lambda x: self.app.start_camera(True))
         btn_no.bind(on_press=lambda x: self.app.start_camera(False))
@@ -153,13 +148,13 @@ class QuestionScreen(BoxLayout):
 class MainApp(App):
     def build(self):
         self.root_box = BoxLayout()
-        self.last_answer_was_yes = False
+        self.show_north_after_camera = False
         self.check_first_start()
         return self.root_box
 
     def check_first_start(self):
         prefs = autoclass("org.kivy.android.PythonActivity").mActivity \
-            .getSharedPreferences("ArchälogiePrefs", 0)
+            .getSharedPreferences("ArchaelogiePrefs", 0)
 
         if prefs.getBoolean("first_start", True):
             prefs.edit().putBoolean("first_start", False).apply()
@@ -172,7 +167,7 @@ class MainApp(App):
         self.root_box.add_widget(QuestionScreen(self))
 
     def start_camera(self, was_yes):
-        self.last_answer_was_yes = was_yes
+        self.show_north_after_camera = was_yes
 
         if request_permissions:
             request_permissions([Permission.CAMERA], self.after_permission)
@@ -191,8 +186,8 @@ class MainApp(App):
         intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         PythonActivity.mActivity.startActivity(intent)
 
-        # Nach Rückkehr IMMER definierter Screen
-        if self.last_answer_was_yes:
+        # Direkt danach → Nordrichtung nur, wenn gerade JA gedrückt
+        if self.show_north_after_camera:
             self.root_box.clear_widgets()
             self.root_box.add_widget(NorthScreen(self))
         else:
