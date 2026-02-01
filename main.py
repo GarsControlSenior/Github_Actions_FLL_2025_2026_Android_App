@@ -14,13 +14,13 @@ except ImportError:
     Permission = None
 
 # ───────────── Design ─────────────
-DARK_BLUE_BG = (0.05, 0.2, 0.45, 1)
+DARKER_BLUE_BG = (0.02, 0.1, 0.3, 1)  # noch dunkleres Blau
 
 
 class DarkBlueButton(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.background_color = DARK_BLUE_BG
+        self.background_color = DARKER_BLUE_BG
         self.color = (1, 1, 1, 1)
         self.border = (0, 0, 0, 0)
 
@@ -31,7 +31,7 @@ class StartScreen(BoxLayout):
         super().__init__(orientation="vertical", spacing=20, padding=40)
         self.app = app
         self.show_welcome = show_welcome
-        Window.clearcolor = DARK_BLUE_BG
+        Window.clearcolor = DARKER_BLUE_BG
 
         # Obere Leiste mit Fragezeichen
         top_bar = BoxLayout(orientation="horizontal", size_hint=(1, 0.15))
@@ -60,7 +60,12 @@ class StartScreen(BoxLayout):
             self.add_widget(welcome_label)
 
             # Weiter-Button zur Arduino-Frage
-            btn_continue = DarkBlueButton(text="Weiter", font_size=32, size_hint=(None, None), size=(300, 120))
+            btn_continue = DarkBlueButton(
+                text="Weiter",
+                font_size=32,
+                size_hint=(None, None),
+                size=(300, 120)
+            )
             btn_continue.pos_hint = {"center_x": 0.5}
             btn_continue.bind(on_press=lambda x: self.app.show_question_screen())
             self.add_widget(btn_continue)
@@ -112,24 +117,31 @@ class StartScreen(BoxLayout):
 class MainApp(App):
     def build(self):
         self.root_box = BoxLayout()
-        Window.clearcolor = DARK_BLUE_BG
+        Window.clearcolor = DARKER_BLUE_BG
 
         # Prüfen, ob Willkommen anzeigen (nur beim ersten Start)
-        self.show_welcome = True
-        self.show_start_screen()
+        self.check_first_start()
         return self.root_box
 
-    def show_start_screen(self):
+    def check_first_start(self):
+        prefs = autoclass("org.kivy.android.PythonActivity").mActivity.getSharedPreferences("ArchaelogiePrefs", 0)
+        first_start = prefs.getBoolean("first_start", True)
+        if first_start:
+            prefs.edit().putBoolean("first_start", False).apply()
+            self.show_start_screen(show_welcome=True)
+        else:
+            self.show_start_screen(show_welcome=False)
+
+    def show_start_screen(self, show_welcome):
         self.root_box.clear_widgets()
-        self.root_box.add_widget(StartScreen(self, show_welcome=self.show_welcome))
+        self.root_box.add_widget(StartScreen(self, show_welcome=show_welcome))
 
     def show_question_screen(self):
-        self.show_welcome = False
-        self.root_box.clear_widgets()
-        self.root_box.add_widget(StartScreen(self, show_welcome=False))
+        # Nach Kamera oder Weiter → Arduino-Frage
+        self.show_start_screen(show_welcome=False)
 
     def start_camera(self, was_yes):
-        # Egal JA oder NEIN, nach Kamera → zurück zur Arduino-Frage
+        # Egal JA oder NEIN → nach Kamera → zurück zur Arduino-Frage
         self.last_answer_was_yes = was_yes
 
         if request_permissions:
