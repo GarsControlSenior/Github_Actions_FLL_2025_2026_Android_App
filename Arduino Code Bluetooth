@@ -1,0 +1,57 @@
+#include <ArduinoBLE.h>
+
+BLEService dataService("180A");
+BLEIntCharacteristic dataChar("2A57", BLERead | BLENotify);
+
+int angle = 0;
+
+String directionFromAngle(int a) {
+  if (a >= 337 || a < 22) return "Nord";
+  if (a < 67) return "Nordost";
+  if (a < 112) return "Ost";
+  if (a < 157) return "Suedost";
+  if (a < 202) return "Sued";
+  if (a < 247) return "Suedwest";
+  if (a < 292) return "West";
+  return "Nordwest";
+}
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial);
+
+  BLE.begin();
+  BLE.setLocalName("Arduino_GCS");
+  BLE.setDeviceName("Arduino_GCS");
+  BLE.setAdvertisedService(dataService);
+
+  dataService.addCharacteristic(dataChar);
+  BLE.addService(dataService);
+
+  dataChar.writeValue(angle);
+  BLE.advertise();
+
+  Serial.println("BLE gestartet");
+}
+
+void loop() {
+  BLEDevice central = BLE.central();
+
+  if (central) {
+    Serial.println("Verbunden");
+
+    while (central.connected()) {
+      angle = (angle + 10) % 360;
+      dataChar.writeValue(angle);
+
+      Serial.print("Wikel: ");
+      Serial.print(angle);
+      Serial.print("°  Richtung: ");
+      Serial.println(directionFromAngle(angle));
+
+      delay(500);
+    }
+
+    Serial.println("Getrennt");
+  }
+}
