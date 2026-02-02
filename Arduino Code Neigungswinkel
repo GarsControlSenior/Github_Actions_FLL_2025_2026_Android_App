@@ -1,0 +1,79 @@
+#include <Arduino_BMI270_BMM150.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128 // Display Breite
+#define SCREEN_HEIGHT 64 // Höhe
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// ANschlüsse Leds
+const int LED_GRUEN = 5;
+const int LED_ROT   = 6;
+
+// leichte toleranz
+const float TOLERANZ = 1.0;   
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial);
+
+  pinMode(LED_GRUEN, OUTPUT);
+  pinMode(LED_ROT, OUTPUT);
+
+  
+  if (!IMU.begin()) {
+    Serial.println("Messen konnten nicht gestarte werden");
+    while (1);
+  }
+
+  Serial.println("Messen gestartet");
+
+  
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(" Display Fehler");
+    while (1);
+  }
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+}
+
+void loop() {
+  float ax, ay, az;
+
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(ax, ay, az);
+
+    
+    float winkel = atan2(ax, az) * 180.0 / PI;
+
+    
+    if (abs(winkel) <= TOLERANZ) {
+      digitalWrite(LED_GRUEN, HIGH); // grünes Led an -> kleiner als 2
+      digitalWrite(LED_ROT, LOW);
+    } else {
+      digitalWrite(LED_GRUEN, LOW);
+      digitalWrite(LED_ROT, HIGH); // rote led an ->  größer als 2
+    }
+
+    // Neigungswinkel im Serial anzeigen
+    Serial.print("Winkel: ");
+    Serial.print(winkel, 1); // 1 Nachkommastelle
+    Serial.println(" Grad");
+
+    //Display Anzeige "Winkel"
+    display.clearDisplay(); // leeres Diplay
+    display.setTextSize(2); // Schriftgröße
+    display.setCursor(0, 0);
+    display.println("Winkel");
+
+    display.setCursor(0, 30);
+    display.print(winkel, 1);
+    display.print(" deg");
+
+    display.display();
+  }
+
+  delay(200);
+}
