@@ -1,7 +1,7 @@
 [app]
 
 # Name der App (wird auf dem Handy angezeigt)
-title = Archälogie
+title = Archäologie
 
 # Paketname (muss klein sein, keine Umlaute!)
 package.name = archaelogie
@@ -20,7 +20,7 @@ version = 1.0
 entrypoint = main.py
 
 # Benötigte Bibliotheken
-requirements = python3,kivy,pyjnius
+requirements = python3,kivy,pyjnius,bleak
 
 # Anzeige
 fullscreen = 0
@@ -33,7 +33,7 @@ android.sdk = 33
 android.ndk = 25b
 
 # Berechtigungen
-android.permissions = CAMERA
+android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION
 
 # Architektur
 android.archs = arm64-v8a
