@@ -1,18 +1,14 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
+from kivy.uix.scrollview import ScrollView
 from kivy.clock import Clock
 from kivy.utils import platform
 from jnius import autoclass, PythonJavaClass, java_method
 import struct
 
-# =========================
-# MATCH MIT ARDUINO SKETCH
-# =========================
-DEVICE_NAME = "Arduino_GCS"
-SERVICE_UUID = "0000180a-0000-1000-8000-00805f9b34fb" # 180A in Langform
-CHAR_UUID    = "00002a57-0000-1000-8000-00805f9b34fb" # 2A57 in Langform
-CCCD_UUID    = "00002902-0000-1000-8000-00805f9b34fb"
+# UUIDs für Standard 16-bit Profile
+CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
 
 BluetoothAdapter = None
 BluetoothDevice = None
@@ -29,7 +25,8 @@ class BLEScanCallback(PythonJavaClass):
     @java_method("(Landroid/bluetooth/BluetoothDevice;I[B)V")
     def onLeScan(self, device, rssi, scanRecord):
         name = device.getName()
-        if name and name == DEVICE_NAME:
+        if name == "Arduino_GCS":
+            self.app.log(f"Gefunden: {name}")
             self.app.stop_scan()
             self.app.connect(device)
 
@@ -41,89 +38,95 @@ class GattCallback(PythonJavaClass):
 
     @java_method("(Landroid/bluetooth/BluetoothGatt;II)V")
     def onConnectionStateChange(self, gatt, status, newState):
-        if newState == 2: # CONNECTED
-            Clock.schedule_once(lambda dt: self.app.set_status("Verbunden"))
+        if newState == 2:
+            self.app.log("Verbunden! Suche Services...")
             Clock.schedule_once(lambda dt: gatt.discoverServices(), 1.0)
-        else:
-            Clock.schedule_once(lambda dt: self.app.set_status("Getrennt. Suche..."))
-            Clock.schedule_once(lambda dt: self.app.start_scan(), 2.0)
+        elif newState == 0:
+            self.app.log("Getrennt.")
 
     @java_method("(Landroid/bluetooth/BluetoothGatt;I)V")
     def onServicesDiscovered(self, gatt, status):
-        s_obj = gatt.getService(UUID.fromString(SERVICE_UUID))
-        if s_obj:
-            char = s_obj.getCharacteristic(UUID.fromString(CHAR_UUID))
-            if char:
-                gatt.setCharacteristicNotification(char, True)
-                desc = char.getDescriptor(UUID.fromString(CCCD_UUID))
-                if desc:
-                    desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                    gatt.writeDescriptor(desc)
+        self.app.log(f"Services entdeckt (Status: {status})")
+        services = gatt.getServices()
+        
+        for i in range(services.size()):
+            s = services.get(i)
+            s_uuid = s.getUuid().toString().lower()
+            self.app.log(f"S: {s_uuid[4:8].upper()}") # Zeigt nur die Kurz-ID
+            
+            # Suche nach deinem Service (180A)
+            if "180a" in s_uuid:
+                chars = s.getCharacteristics()
+                for j in range(chars.size()):
+                    c = chars.get(j)
+                    c_uuid = c.getUuid().toString().lower()
+                    self.app.log(f"  C: {c_uuid[4:8].upper()}")
+                    
+                    if "2a57" in c_uuid:
+                        self.app.log("Match! Aktiviere Notify...")
+                        gatt.setCharacteristicNotification(c, True)
+                        d = c.getDescriptor(UUID.fromString(CCCD_UUID))
+                        if d:
+                            d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                            gatt.writeDescriptor(d)
 
     @java_method("(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V")
     def onCharacteristicChanged(self, gatt, characteristic):
-        data = characteristic.getValue() # Das sind 4 Bytes vom Arduino
+        data = characteristic.getValue()
         if data:
-            # Konvertiert 4 Bytes (Little Endian) in einen Integer
             try:
-                angle = struct.unpack('<I', bytes(data))[0]
+                # Arduino BLE sendet oft 4-byte Int (Little Endian)
+                angle = struct.unpack('<i', bytes(data))[0]
                 Clock.schedule_once(lambda dt: self.app.update_data(angle))
             except:
                 pass
 
 class BLEApp(App):
     def build(self):
-        self.root = BoxLayout(orientation='vertical', padding=50, spacing=20)
-        self.status_lbl = Label(text="Status: Startet...", font_size=20)
-        self.angle_lbl = Label(text="0°", font_size=80, color=(0, 1, 0.5, 1))
-        self.dir_lbl = Label(text="---", font_size=40)
+        self.root = BoxLayout(orientation='vertical', padding=20)
+        self.angle_lbl = Label(text="0°", font_size=100, size_hint_y=0.4)
         
-        self.root.add_widget(self.status_lbl)
+        # Log Fenster
+        self.scroll = ScrollView(size_hint_y=0.6)
+        self.log_lbl = Label(text="Log gestartet...\n", size_hint_y=None, halign="left", valign="top")
+        self.log_lbl.bind(texture_size=self.log_lbl.setter('size'))
+        self.scroll.add_widget(self.log_lbl)
+        
         self.root.add_widget(self.angle_lbl)
-        self.root.add_widget(self.dir_lbl)
+        self.root.add_widget(self.scroll)
         return self.root
+
+    def log(self, txt):
+        Clock.schedule_once(lambda dt: setattr(self.log_lbl, 'text', self.log_lbl.text + txt + "\n"))
 
     def on_start(self):
         if platform == "android":
-            self.setup_android()
+            self.init_java()
+            from android.permissions import request_permissions, Permission
+            request_permissions([Permission.ACCESS_FINE_LOCATION, Permission.BLUETOOTH_SCAN, Permission.BLUETOOTH_CONNECT], 
+                               lambda p, r: self.start_scan())
 
-    def setup_android(self):
+    def init_java(self):
         global BluetoothAdapter, BluetoothDevice, BluetoothGattDescriptor, UUID, mActivity
         BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
         BluetoothDevice = autoclass("android.bluetooth.BluetoothDevice")
         BluetoothGattDescriptor = autoclass("android.bluetooth.BluetoothGattDescriptor")
         UUID = autoclass("java.util.UUID")
         mActivity = autoclass("org.kivy.android.PythonActivity").mActivity
-        self.request_permissions()
 
-    def request_permissions(self):
-        from android.permissions import request_permissions, Permission
-        request_permissions([Permission.ACCESS_FINE_LOCATION, Permission.BLUETOOTH_SCAN, Permission.BLUETOOTH_CONNECT], 
-                           lambda p, r: self.start_scan())
-
-    def start_scan(self, *args):
-        adapter = BluetoothAdapter.getDefaultAdapter()
-        if adapter and adapter.isEnabled():
-            self.scan_cb = BLEScanCallback(self)
-            adapter.startLeScan(self.scan_cb)
-            self.set_status("Suche Arduino...")
+    def start_scan(self):
+        self.log("Scan gestartet...")
+        self.scan_cb = BLEScanCallback(self)
+        BluetoothAdapter.getDefaultAdapter().startLeScan(self.scan_cb)
 
     def stop_scan(self):
-        adapter = BluetoothAdapter.getDefaultAdapter()
-        if adapter: adapter.stopLeScan(self.scan_cb)
+        BluetoothAdapter.getDefaultAdapter().stopLeScan(self.scan_cb)
 
     def connect(self, device):
-        self.set_status("Verbinde...")
         device.connectGatt(mActivity, False, GattCallback(self), 2)
-
-    def set_status(self, txt): self.status_lbl.text = txt
 
     def update_data(self, angle):
         self.angle_lbl.text = f"{angle}°"
-        # Richtung berechnen
-        dirs = ["Nord", "Nordost", "Ost", "Suedost", "Sued", "Suedwest", "West", "Nordwest"]
-        idx = int((angle + 22.5) / 45) % 8
-        self.dir_lbl.text = dirs[idx]
 
 if __name__ == "__main__":
     BLEApp().run()
