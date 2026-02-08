@@ -33,7 +33,7 @@ android.sdk = 33
 android.ndk = 25b
 
 # Berechtigungen
-android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION
+android.permissions = BLUETOOTH,BLUETOOTH_ADMIN,BLUETOOTH_SCAN,BLUETOOTH_CONNECT,ACCESS_FINE_LOCATION
 
 # Architektur
 android.archs = arm64-v8a
