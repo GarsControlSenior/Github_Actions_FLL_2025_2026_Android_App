@@ -5,17 +5,23 @@ from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.clock import Clock
 from kivy.utils import platform
-from jnius import autoclass, PythonJavaClass, java_method
 import struct
 
-# Standard UUIDs
-CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+# Jnius Importe (nur auf Android)
+if platform == "android":
+    from jnius import autoclass, PythonJavaClass, java_method
+    BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
+    BluetoothDevice = autoclass("android.bluetooth.BluetoothDevice")
+    BluetoothGattDescriptor = autoclass("android.bluetooth.BluetoothGattDescriptor")
+    UUID = autoclass("java.util.UUID")
+    PythonActivity = autoclass("org.kivy.android.PythonActivity")
+    mActivity = PythonActivity.mActivity
+else:
+    # Dummy-Klassen für PC-Tests (verhindert Absturz beim Start am PC)
+    class PythonJavaClass: pass
+    def java_method(sig): return lambda x: x
 
-BluetoothAdapter = None
-BluetoothDevice = None
-BluetoothGattDescriptor = None
-UUID = None
-mActivity = None
+CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
 
 class BLEScanCallback(PythonJavaClass):
     __javainterfaces__ = ["android/bluetooth/BluetoothAdapter$LeScanCallback"]
@@ -27,7 +33,7 @@ class BLEScanCallback(PythonJavaClass):
     def onLeScan(self, device, rssi, scanRecord):
         name = device.getName()
         if name == "Arduino_GCS":
-            self.app.log(f"Gefunden: {name} ({device.getAddress()})")
+            self.app.log(f"Gefunden: {name}")
             self.app.connect(device)
 
 class GattCallback(PythonJavaClass):
@@ -46,23 +52,16 @@ class GattCallback(PythonJavaClass):
 
     @java_method("(Landroid/bluetooth/BluetoothGatt;I)V")
     def onServicesDiscovered(self, gatt, status):
-        self.app.log(f"Services entdeckt (Status: {status})")
+        self.app.log("Services entdeckt")
         services = gatt.getServices()
-        
         for i in range(services.size()):
             s = services.get(i)
             s_uuid = s.getUuid().toString().lower()
-            self.app.log(f"S: {s_uuid[4:8].upper()}")
-            
-            if "180a" in s_uuid:
+            if "180a" in s_uuid: # Beispiel Service UUID
                 chars = s.getCharacteristics()
                 for j in range(chars.size()):
                     c = chars.get(j)
-                    c_uuid = c.getUuid().toString().lower()
-                    self.app.log(f"  C: {c_uuid[4:8].upper()}")
-                    
-                    if "2a57" in c_uuid:
-                        self.app.log("Aktiviere Notify...")
+                    if "2a57" in c.getUuid().toString().lower():
                         gatt.setCharacteristicNotification(c, True)
                         d = c.getDescriptor(UUID.fromString(CCCD_UUID))
                         if d:
@@ -74,30 +73,28 @@ class GattCallback(PythonJavaClass):
         data = characteristic.getValue()
         if data:
             try:
-                angle = struct.unpack('<i', bytes(data))[0]
+                # Nutze 'h' für 16-bit signed oder 'i' für 32-bit
+                angle = struct.unpack('<h', bytes(data))[0]
                 Clock.schedule_once(lambda dt: self.app.update_data(angle))
-            except: pass
+            except Exception as e:
+                self.app.log(f"Fehler: {str(e)}")
 
 class BLEApp(App):
     def build(self):
         self.root = BoxLayout(orientation='vertical', padding=20, spacing=10)
-        
-        # UI Elemente
-        self.angle_lbl = Label(text="0°", font_size=100, size_hint_y=0.3)
-        self.status_btn = Button(text="Scan starten", size_hint_y=0.15, on_press=self.start_scan)
-        
-        # Log Fenster
-        self.scroll = ScrollView(size_hint_y=0.55)
-        self.log_lbl = Label(text="System bereit\n", size_hint_y=None, halign="left", valign="top")
+        self.angle_lbl = Label(text="0°", font_size=100, size_hint_y=0.4)
+        self.status_btn = Button(text="Scan starten", size_hint_y=0.2, on_press=self.start_scan)
+        self.scroll = ScrollView(size_hint_y=0.4)
+        self.log_lbl = Label(text="Bereit\n", size_hint_y=None, halign="left", valign="top")
         self.log_lbl.bind(texture_size=self.log_lbl.setter('size'))
         self.scroll.add_widget(self.log_lbl)
-        
         self.root.add_widget(self.angle_lbl)
         self.root.add_widget(self.status_btn)
         self.root.add_widget(self.scroll)
         
         self.gatt = None
-        self.device = None
+        self.scan_cb = None
+        self.gatt_cb = None # WICHTIG: Referenz behalten!
         return self.root
 
     def log(self, txt):
@@ -105,45 +102,51 @@ class BLEApp(App):
 
     def on_start(self):
         if platform == "android":
-            self.init_java()
             from android.permissions import request_permissions, Permission
-            request_permissions([Permission.ACCESS_FINE_LOCATION, Permission.BLUETOOTH_SCAN, Permission.BLUETOOTH_CONNECT], 
-                               lambda p, r: self.log("Berechtigungen okay."))
+            # Alle notwendigen Berechtigungen für Android 12+
+            request_permissions([
+                Permission.ACCESS_FINE_LOCATION,
+                Permission.BLUETOOTH_SCAN,
+                Permission.BLUETOOTH_CONNECT
+            ], self.check_permissions)
 
-    def init_java(self):
-        global BluetoothAdapter, BluetoothDevice, BluetoothGattDescriptor, UUID, mActivity
-        BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
-        BluetoothDevice = autoclass("android.bluetooth.BluetoothDevice")
-        BluetoothGattDescriptor = autoclass("android.bluetooth.BluetoothGattDescriptor")
-        UUID = autoclass("java.util.UUID")
-        mActivity = autoclass("org.kivy.android.PythonActivity").mActivity
+    def check_permissions(self, permissions, results):
+        if all(results):
+            self.log("Alle Berechtigungen erteilt.")
+        else:
+            self.log("Berechtigungen fehlen!")
 
     def start_scan(self, *args):
-        self.log("Scanne nach Arduino...")
-        self.status_btn.text = "Suche..."
-        self.scan_cb = BLEScanCallback(self)
-        BluetoothAdapter.getDefaultAdapter().startLeScan(self.scan_cb)
-
-    def stop_scan(self):
-        adapter = BluetoothAdapter.getDefaultAdapter()
-        if adapter and hasattr(self, 'scan_cb'):
-            adapter.stopLeScan(self.scan_cb)
+        try:
+            adapter = BluetoothAdapter.getDefaultAdapter()
+            if not adapter or not adapter.isEnabled():
+                self.log("Bitte Bluetooth aktivieren!")
+                return
+            
+            self.log("Scanne...")
+            self.status_btn.text = "Suche..."
+            self.scan_cb = BLEScanCallback(self)
+            adapter.startLeScan(self.scan_cb)
+        except Exception as e:
+            self.log(f"Scan Fehler: {str(e)}")
 
     def connect(self, device):
-        self.device = device
-        self.log("Stoppe Scan...")
-        self.stop_scan()
-        self.log("Verbinde (Delay 0.5s)...")
-        self.status_btn.text = "Verbinde..."
-        Clock.schedule_once(lambda dt: self._do_connect(), 0.5)
-
-    def _do_connect(self):
-        # TRANSPORT_LE (2) ist entscheidend für Stabilität
-        self.gatt = self.device.connectGatt(mActivity, False, GattCallback(self), 2)
+        adapter = BluetoothAdapter.getDefaultAdapter()
+        adapter.stopLeScan(self.scan_cb)
+        
+        self.log(f"Verbinde mit {device.getAddress()}...")
+        # Die Callback-Instanz muss an self gebunden werden, sonst löscht Python sie
+        self.gatt_cb = GattCallback(self)
+        # TRANSPORT_LE = 2
+        self.gatt = device.connectGatt(mActivity, False, self.gatt_cb, 2)
 
     def update_data(self, angle):
         self.angle_lbl.text = f"{angle}°"
-        self.status_btn.text = "Verbunden"
+        self.status_btn.text = "Daten empfangen"
+
+    def on_stop(self):
+        if self.gatt:
+            self.gatt.close()
 
 if __name__ == "__main__":
     BLEApp().run()
