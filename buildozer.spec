@@ -20,20 +20,20 @@ version = 1.0
 entrypoint = main.py
 
 # Benötigte Bibliotheken
-requirements = python3, kivy, opencv-python-headless, numpy, plyer, pillow, android
+requirements = python3, kivy, opencv, numpy, plyer, pillow, android
 
 # Anzeige
 fullscreen = 1
 orientation = portrait
 
 # Android SDK / NDK
-android.api = 35
+android.api = 33
 android.minapi = 24
 android.sdk = 35
 android.ndk = 25b
 
 # Berechtigungen
-android.permissions = CAMERA, READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE,  WRITE_EXTERNAL_STORAGE
+android.permissions = CAMERA, READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE,  WRITE_EXTERNAL_STORAGE 
 
 # Architektur
 android.archs = arm64-v8a, armeabi-v7a
