@@ -23,23 +23,23 @@ entrypoint = main.py
 requirements = python3, kivy, opencv-python-headless, numpy, plyer, pillow, android
 
 # Anzeige
-fullscreen = 0
+fullscreen = 1
 orientation = portrait
 
 # Android SDK / NDK
-android.api = 33
+android.api = 35
 android.minapi = 24
-android.sdk = 33
+android.sdk = 35
 android.ndk = 25b
 
 # Berechtigungen
-android.permissions = CAMERA, READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
+android.permissions = CAMERA, READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE,  WRITE_EXTERNAL_STORAGE
 
 # Architektur
 android.archs = arm64-v8a, armeabi-v7a
 
 # Debug (optional)
-android.logcat_filters = *:S python:D
+#android.logcat_filters = *:S python:D
 
 # Buildozer
 warn_on_root = 1
@@ -47,3 +47,6 @@ warn_on_root = 1
 
 # Erlaubt das Speichern von Dateien
 android.allow_backup = True
+
+# Android 15 Edge-to-Edge Unterstützung (Optional, aber empfohlen)
+android.enable_androidx = True
