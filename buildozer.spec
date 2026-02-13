@@ -33,7 +33,7 @@ android.sdk = 35
 android.ndk = 25b
 
 # Berechtigungen
-android.permissions = CAMERA, READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE,  WRITE_EXTERNAL_STORAGE 
+android.permissions = CAMERA, READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE,  WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE 
 
 # Architektur
 android.archs = arm64-v8a, armeabi-v7a
