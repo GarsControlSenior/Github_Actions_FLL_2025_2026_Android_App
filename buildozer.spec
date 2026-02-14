@@ -20,7 +20,7 @@ version = 1.0
 entrypoint = main.py
 
 # Benötigte Bibliotheken
-requirements = python3, kivy, opencv, numpy, plyer, pillow, android
+requirements = python3, kivy, kivymd, opencv-python, numpy, plyer, camera4kivy, android, pyjnius
 
 # Anzeige
 fullscreen = 1
