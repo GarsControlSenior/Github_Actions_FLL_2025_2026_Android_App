@@ -1,263 +1,235 @@
 import os
 import cv2
 import numpy as np
-from PIL import Image as PILImage, ImageOps
-
-from kivy.app import App
-from kivy.uix.screenmanager import ScreenManager, Screen
-from kivy.uix.floatlayout import FloatLayout
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.image import Image
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.widget import Widget
-from kivy.graphics import Color, Line, Ellipse
-from kivy.graphics.texture import Texture
+import math
+import threading
 from kivy.utils import platform
 from kivy.clock import Clock
-from kivy.metrics import dp
+from kivy.lang import Builder
+from kivy.graphics import Color, Line
+from kivy.properties import NumericProperty, ListProperty, StringProperty
+from kivymd.app import MDApp
+from kivymd.uix.screen import MDScreen
+from kivymd.uix.snackbar import Snackbar
+from plyer import accelerometer
+from camera4kivy import Preview
 
-# Plyer für Kamera & Teilen sicher einbinden
-try:
-    from plyer import camera, share
-except Exception:
-    camera = None
-    share = None
+# Java-Brücke für Galerie-Zugriff
+if platform == 'android':
+    from android.permissions import request_permissions, Permission
+    from jnius import autoclass, cast
 
-class ImageProcessor:
-    """Verarbeitet die Bildtransformationen mit OpenCV."""
-    
-    def order_points(self, pts):
-        rect = np.zeros((4, 2), dtype="float32")
-        pts = np.array(pts)
-        s = pts.sum(axis=1)
-        rect[0] = pts[np.argmin(s)]  # Top-Left
-        rect[2] = pts[np.argmax(s)]  # Bottom-Right
-        diff = np.diff(pts, axis=1)
-        rect[1] = pts[np.argmin(diff)] # Top-Right
-        rect[3] = pts[np.argmax(diff)] # Bottom-Left
-        return rect
+# UI Layout
+KV = '''
+<OrtographerScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        md_bg_color: 0.05, 0.05, 0.05, 1
 
-    def perspective_correct(self, img, corners):
-        try:
-            rect = self.order_points(corners)
-            (tl, tr, br, bl) = rect
+        RelativeLayout:
+            id: container
+            Preview:
+                id: preview
+                aspect_ratio: '16:9'
             
-            # Berechnung der neuen Breite/Höhe
-            widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
-            widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
-            maxWidth = max(int(widthA), int(widthB))
+            Widget:
+                id: overlay
+                canvas:
+                    Color:
+                        rgba: 1, 0.8, 0, 0.8 # Gelbes Trapez
+                    Line:
+                        points: root.polygon_flat
+                        width: dp(2)
+                        close: True
+
+        MDCard:
+            orientation: "vertical"
+            padding: "15dp"
+            size_hint_y: None
+            height: "230dp"
+            radius: [25, 25, 0, 0]
+            md_bg_color: 0.15, 0.15, 0.15, 1
+            elevation: 4
+
+            MDLabel:
+                text: root.status_text
+                halign: "center"
+                theme_text_color: "Custom"
+                text_color: 1, 1, 1, 1
+                font_style: "Button"
+
+            MDBoxLayout:
+                MDLabel: text: "Breite"; theme_text_color: "Hint"; size_hint_x: 0.2
+                MDSlider:
+                    id: w_slider
+                    min: 10; max: 100; value: 65
+                    on_value: root.update_polygon()
             
-            heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
-            heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
-            maxHeight = max(int(heightA), int(heightB))
-            
-            dst = np.array([
-                [0, 0],
-                [maxWidth - 1, 0],
-                [maxWidth - 1, maxHeight - 1],
-                [0, maxHeight - 1]
-            ], dtype="float32")
-            
-            M = cv2.getPerspectiveTransform(rect, dst)
-            return cv2.warpPerspective(img, M, (maxWidth, maxHeight))
-        except Exception:
-            return None
+            MDBoxLayout:
+                MDLabel: text: "Höhe"; theme_text_color: "Hint"; size_hint_x: 0.2
+                MDSlider:
+                    id: h_slider
+                    min: 10; max: 100; value: 45
+                    on_value: root.update_polygon()
 
-    def cv2_to_texture(self, img):
-        """Konvertiert OpenCV-Bild in Kivy-Textur."""
-        try:
-            buf = cv2.flip(img, 0)
-            buf = cv2.cvtColor(buf, cv2.COLOR_BGR2RGB)
-            texture = Texture.create(size=(img.shape[1], img.shape[0]), colorfmt='rgb')
-            texture.blit_buffer(buf.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
-            return texture
-        except Exception:
-            return None
+            MDFillRoundFlatButton:
+                text: "SCAN & SPEICHERN"
+                pos_hint: {"center_x": .5}
+                size_hint_x: 0.8
+                on_release: root.safe_capture()
+                disabled: root.is_processing == 1
+'''
 
-class DraggableCorner(Widget):
-    """Ein ziehbarer roter Punkt für die Eckenauswahl."""
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.size_hint = (None, None)
-        self.size = (dp(50), dp(50))
-        with self.canvas:
-            Color(1, 0, 0, 0.8)
-            self.ellipse = Ellipse(pos=self.pos, size=self.size)
-        self.bind(pos=lambda *x: setattr(self.ellipse, 'pos', self.pos))
+class OrtographerScreen(MDScreen):
+    roll = NumericProperty(0)
+    pitch = NumericProperty(0)
+    polygon_flat = ListProperty([])
+    status_text = StringProperty("Initialisiere...")
+    is_processing = NumericProperty(0)
 
-    def on_touch_move(self, touch):
-        if self.collide_point(*touch.pos):
-            self.center = touch.pos
-            self.parent.update_lines()
-            return True
-
-class MenuScreen(Screen):
-    """Startbildschirm der App."""
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(20))
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.current_pts = []
+        # Low-Pass Filter Variablen (Zappel-Schutz)
+        self.lp_roll = 0
+        self.lp_pitch = 0
+        self.alpha = 0.15 # Filter-Stärke (0.01 = sehr träge, 1.0 = kein Filter)
         
-        layout.add_widget(Label(text="Beleg Scanner", font_size=dp(32), size_hint_y=0.2))
-        
-        self.status_lbl = Label(text="Bereit für Scan", size_hint_y=0.6)
-        layout.add_widget(self.status_lbl)
-        
-        btn = Button(text="Kamera öffnen", size_hint_y=0.2, background_color=(0, 0.5, 1, 1))
-        btn.bind(on_release=self.take_photo)
-        layout.add_widget(btn)
-        
-        self.add_widget(layout)
+        Clock.schedule_once(self.setup)
 
-    def take_photo(self, *args):
-        path = os.path.join(App.get_running_app().user_data_dir, 'input.jpg')
-        if platform == 'android' and camera:
-            try:
-                camera.take_picture(filename=path, on_complete=self.done)
-            except Exception as e:
-                self.status_lbl.text = f"Fehler: {str(e)}"
-        else:
-            # Fallback für PC-Tests: Erstellt ein weißes Rechteck
-            dummy = np.zeros((1200, 800, 3), dtype=np.uint8)
-            cv2.rectangle(dummy, (150, 150), (650, 1050), (255, 255, 255), -1)
-            cv2.imwrite(path, dummy)
-            self.done(path)
-
-    def done(self, path):
-        if os.path.exists(path):
-            Clock.schedule_once(lambda dt: self.next(path), 0.5)
-
-    def next(self, path):
-        self.manager.get_screen('editor').load(path)
-        self.manager.current = 'editor'
-
-class EditorScreen(Screen):
-    """Bildschirm zum Zuschneiden und Korrigieren."""
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.proc = ImageProcessor()
-        self.cv_img = None
-        self.res_img = None
-        
-        root = BoxLayout(orientation='vertical')
-        
-        # Arbeitsbereich
-        self.fl = FloatLayout()
-        self.img_widget = Image(allow_stretch=True, keep_ratio=True)
-        self.fl.add_widget(self.img_widget)
-        
-        self.corners = [DraggableCorner() for _ in range(4)]
-        for c in self.corners: self.fl.add_widget(c)
-        
-        with self.fl.canvas.after:
-            Color(0, 1, 0, 1)
-            self.line = Line(width=dp(2), close=True)
-            
-        root.add_widget(self.fl)
-        
-        # Buttons
-        btns = BoxLayout(size_hint_y=None, height=dp(65), padding=dp(5), spacing=dp(5))
-        self.btn_action = Button(text="Zuschneiden")
-        self.btn_action.bind(on_release=self.action)
-        
-        btn_back = Button(text="Abbrechen")
-        btn_back.bind(on_release=self.go_back)
-        
-        btns.add_widget(btn_back)
-        btns.add_widget(self.btn_action)
-        root.add_widget(btns)
-        
-        self.add_widget(root)
-
-    def go_back(self, *args):
-        self.manager.current = 'menu'
-
-    def load(self, path):
-        try:
-            # RAM-Schutz: Bild direkt verkleinert laden
-            p = PILImage.open(path)
-            p = ImageOps.exif_transpose(p)
-            p.thumbnail((1200, 1200)) 
-            
-            self.cv_img = cv2.cvtColor(np.array(p), cv2.COLOR_RGB2BGR)
-            self.img_widget.texture = self.proc.cv2_to_texture(self.cv_img)
-            
-            self.reset_ui()
-            Clock.schedule_once(self.init_pts, 0.5)
-        except Exception:
-            self.go_back()
-
-    def init_pts(self, *args):
-        # Berechnet die Position der Punkte relativ zum angezeigten Bild
-        w, h = self.img_widget.norm_image_size
-        if w <= 1: 
-            Clock.schedule_once(self.init_pts, 0.2)
-            return
-
-        cx, cy = self.img_widget.center
-        pts = [
-            (cx - w*0.3, cy + h*0.3), (cx + w*0.3, cy + h*0.3),
-            (cx + w*0.3, cy - h*0.3), (cx - w*0.3, cy - h*0.3)
-        ]
-        for i, p in enumerate(pts):
-            self.corners[i].center = p
-            self.corners[i].opacity = 1
-        self.update_lines()
-
-    def update_lines(self):
-        self.line.points = [p for c in self.corners for p in c.center]
-
-    def action(self, *args):
-        if self.btn_action.text == "Zuschneiden":
-            self.do_crop()
-        else:
-            self.do_share()
-
-    def do_crop(self):
-        if self.cv_img is None: return
-        
-        # Koordinatenumrechnung UI -> Bildpixel
-        iw, ih = self.img_widget.norm_image_size
-        ix = self.img_widget.center_x - iw/2
-        iy = self.img_widget.center_y - ih/2
-        h_orig, w_orig = self.cv_img.shape[:2]
-        
-        pts = []
-        for c in self.corners:
-            nx = (c.center_x - ix) / iw
-            ny = 1.0 - (c.center_y - iy) / ih
-            pts.append([nx * w_orig, ny * h_orig])
-        
-        res = self.proc.perspective_correct(self.cv_img, pts)
-        if res is not None:
-            self.res_img = res
-            self.img_widget.texture = self.proc.cv2_to_texture(self.res_img)
-            self.btn_action.text = "Teilen"
-            for c in self.corners: c.opacity = 0
-            self.line.points = []
-
-    def do_share(self):
-        if self.res_img is None: return
-        path = os.path.join(App.get_running_app().user_data_dir, 'scan.jpg')
-        cv2.imwrite(path, self.res_img)
-        if share:
-            try: share.share_file(path)
-            except Exception: pass
-
-    def reset_ui(self):
-        self.btn_action.text = "Zuschneiden"
-        for c in self.corners: c.opacity = 1
-
-class MainApp(App):
-    def build(self):
+    def setup(self, dt):
         if platform == 'android':
-            from android.permissions import request_permissions, Permission
-            request_permissions([Permission.CAMERA, Permission.WRITE_EXTERNAL_STORAGE, Permission.READ_EXTERNAL_STORAGE])
+            request_permissions([Permission.CAMERA, Permission.WRITE_EXTERNAL_STORAGE])
         
-        sm = ScreenManager()
-        sm.add_widget(MenuScreen(name='menu'))
-        sm.add_widget(EditorScreen(name='editor'))
-        return sm
+        # Kamera verbinden
+        self.ids.preview.connect_camera(enable_analyze_callback=False)
+        # Sensoren alle 30ms abfragen
+        Clock.schedule_interval(self.update_sensors, 1.0/30.0)
+
+    def update_sensors(self, dt):
+        """ Liest Sensoren und glättet die Werte (Zappel-Schutz) """
+        try:
+            acc = accelerometer.acceleration
+            if acc and all(v is not None for v in acc):
+                # Rohwerte berechnen
+                raw_roll = math.degrees(math.atan2(acc[0], acc[2]))
+                raw_pitch = math.degrees(math.atan2(-acc[1], math.sqrt(acc[0]**2 + acc[2]**2)))
+                
+                # Low-Pass Filter Formel: glatt = alpha * neu + (1-alpha) * alt
+                self.lp_roll = self.alpha * raw_roll + (1 - self.alpha) * self.lp_roll
+                self.lp_pitch = self.alpha * raw_pitch + (1 - self.alpha) * self.lp_pitch
+                
+                self.roll, self.pitch = self.lp_roll, self.lp_pitch
+                self.status_text = f"Neigung: P {int(self.pitch)}° | R {int(self.roll)}°"
+                self.update_polygon()
+        except:
+            self.status_text = "Keine Sensordaten verfügbar"
+
+    def update_polygon(self):
+        """ Berechnet das Trapez (logische Kopie deines Swift-Codes) """
+        vw, vh = self.ids.container.size
+        if vw < 10: return
+
+        w_pc, h_pc = self.ids.w_slider.value / 100.0, self.ids.h_slider.value / 100.0
+        cx, cy = vw / 2, vh / 2
+        bw, bh = vw * w_pc, vh * h_pc
+
+        p = max(-35, min(35, self.pitch)) / 35.0
+        r = max(-35, min(35, self.roll)) / 35.0
+
+        narrow = 0.35 * abs(p) * bw
+        skew = r * (bw * 0.2)
+        top_w = bw - (narrow if p >= 0 else 0)
+        bot_w = bw - (0 if p >= 0 else narrow)
+
+        # TL, TR, BR, BL
+        self.current_pts = [
+            (cx - skew/2 - top_w/2, cy + bh/2),
+            (cx - skew/2 + top_w/2, cy + bh/2),
+            (cx + skew/2 + bot_w/2, cy - bh/2),
+            (cx + skew/2 - bot_w/2, cy - bh/2)
+        ]
+        
+        flat = []
+        for p_xy in self.current_pts: flat.extend([p_xy[0], p_xy[1]])
+        self.polygon_flat = flat
+
+    def safe_capture(self):
+        if self.is_processing: return
+        self.is_processing = 1
+        self.status_text = "Verarbeite Bild..."
+        # Screenshot-Funktion von camera4kivy
+        self.ids.preview.capture_screenshot(self.process_thread_starter)
+
+    def process_thread_starter(self, path):
+        threading.Thread(target=self._run_cv_logic, args=(path,)).start()
+
+    def _run_cv_logic(self, path):
+        try:
+            img = cv2.imread(path)
+            if img is None: return
+
+            # Koordinaten-Mapping View -> Bild-Pixel
+            ih, iw = img.shape[:2]
+            vw, vh = self.ids.container.size
+            src_pts = []
+            for (vx, vy) in self.current_pts:
+                # Kivy Y (unten 0) -> OpenCV Y (oben 0)
+                src_pts.append([(vx/vw)*iw, (1.0 - (vy/vh))*ih])
+            
+            src_pts = np.array(src_pts, dtype="float32")
+            # Zielformat DIN A4 Proportionen
+            dst_pts = np.array([[0,0], [1200,0], [1200,1600], [0,1600]], dtype="float32")
+            
+            M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+            warped = cv2.warpPerspective(img, M, (1200, 1600))
+            
+            # Speichername generieren
+            final_name = f"Ortho_{int(Clock.get_time())}.jpg"
+            out_path = os.path.join(os.path.dirname(path), final_name)
+            cv2.imwrite(out_path, warped)
+
+            # In Galerie speichern (Android MediaStore)
+            if platform == 'android':
+                self.android_save_to_gallery(out_path, final_name)
+
+            self.notify(f"Gespeichert: {final_name}")
+        except Exception as e:
+            self.notify(f"Fehler: {str(e)}")
+        finally:
+            self.is_processing = 0
+            if os.path.exists(path): os.remove(path)
+
+    def android_save_to_gallery(self, file_path, name):
+        """ Nutzt MediaStore, damit das Bild sofort in Fotos erscheint """
+        try:
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            MediaStore = autoclass('android.provider.MediaStore')
+            BitmapFactory = autoclass('android.graphics.BitmapFactory')
+            context = PythonActivity.mActivity
+            bitmap = BitmapFactory.decodeFile(file_path)
+            MediaStore.Images.Media.insertImage(context.getContentResolver(), bitmap, name, "Ortographer")
+        except: pass
+
+    def notify(self, msg):
+        Clock.schedule_once(lambda dt: Snackbar(text=msg).open(), 0)
+
+class OrtographerApp(MDApp):
+    def build(self):
+        self.theme_cls.theme_style = "Dark"
+        self.theme_cls.primary_palette = "Amber"
+        return Builder.load_string(KV + "\nOrtographerScreen:")
+
+    def on_pause(self):
+        # WICHTIG: Kamera beim Minimieren stoppen, um Absturz zu verhindern
+        try: self.root.ids.preview.disconnect_camera()
+        except: pass
+        return True
+
+    def on_resume(self):
+        # Kamera wieder starten
+        try: self.root.ids.preview.connect_camera()
+        except: pass
 
 if __name__ == '__main__':
-    MainApp().run()
+    OrtographerApp().run()
