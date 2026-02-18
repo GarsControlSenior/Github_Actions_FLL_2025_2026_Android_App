@@ -1,52 +1,38 @@
+
 [app]
 
-# Name der App (wird auf dem Handy angezeigt)
+# Name der App
 title = Archäologie
-
-# Paketname (muss klein sein, keine Umlaute!)
-package.name = archaelogie
-
-# Domain (frei wählbar)
+package.name = archaeologie
 package.domain = org.example
 
 # Quellcode
 source.dir = .
 source.include_exts = py
-
-# Version
 version = 1.0
-
-# Einstiegspunkt
 entrypoint = main.py
+orientation = portrait
 
-# Benötigte Bibliotheken
-requirements = python3, kivy, kivymd, opencv-python, numpy, plyer, camera4kivy, android, pyjnius
+# Bibliotheken
+requirements = python3,kivy,pyjnius,android,pillow,bleak,asyncio
+
+# Berechtigungen
+android.permissions = CAMERA,BLUETOOTH,BLUETOOTH_ADMIN,BLUETOOTH_SCAN,BLUETOOTH_CONNECT,ACCESS_FINE_LOCATION,ACCESS_COARSE_LOCATION
 
 # Anzeige
-fullscreen = 1
-orientation = portrait
+fullscreen = 0
 
 # Android SDK / NDK
 android.api = 33
-android.minapi = 24
-android.sdk = 35
-android.ndk = 25b
-
-# Berechtigungen
-android.permissions = CAMERA, READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE,  WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE 
+android.minapi = 21
+android.sdk = 33
+android.ndk = 25
 
 # Architektur
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 
-# Debug (optional)
-#android.logcat_filters = *:S python:D
+# Logging
+android.logcat_filters = *:S python:D
 
-# Buildozer
+# Warnung bei Root
 warn_on_root = 1
-
-
-# Erlaubt das Speichern von Dateien
-android.allow_backup = True
-
-# Android 15 Edge-to-Edge Unterstützung (Optional, aber empfohlen)
-android.enable_androidx = True
