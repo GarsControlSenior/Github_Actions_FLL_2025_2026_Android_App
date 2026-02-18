@@ -13,6 +13,7 @@ jobs:
       PYTHONUNBUFFERED: '1'
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       ANDROIDSDK: ${{ github.workspace }}/android-sdk
+      GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g"
 
     steps:
       - name: Code auschecken
