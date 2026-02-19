@@ -1,38 +1,21 @@
-
 [app]
-
-# Name der App
-title = Archäologie
-package.name = archaeologie
+title = EasyDokumentation
+package.name = archaelogie
 package.domain = org.example
-
-# Quellcode
-source.dir = .
-source.include_exts = py
-version = 1.0
-entrypoint = main.py
+source.include_exts = py,png,jpg,kv,txt
+version = 0.1
+requirements = python3,kivy==2.1.0,pyjnius,opencv
 orientation = portrait
+source.dir = .
 
-# Bibliotheken
-requirements = python3, kivy, opencv-python-headless, numpy, plyer, android #python3,kivy,pyjnius,android,pillow,bleak,asyncio
-
-# Berechtigungen
-android.permissions = CAMERA, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE #CAMERA,BLUETOOTH,BLUETOOTH_ADMIN,BLUETOOTH_SCAN,BLUETOOTH_CONNECT,ACCESS_FINE_LOCATION,ACCESS_COARSE_LOCATION
-
-# Anzeige
-fullscreen = 0
-
-# Android SDK / NDK
+android.permissions = CAMERA, BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION,BLUETOOTH_CONNECT,BLUETOOTH_SCAN, WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 android.api = 33
 android.minapi = 21
-android.sdk = 33
-android.ndk = 25
 
-# Architektur
-android.archs = arm64-v8a
+android.arch = arm64-v8a
+android.ndk = 25b
 
-# Logging
-android.logcat_filters = *:S python:D
 
-# Warnung bei Root
+[buildozer]
+log_level = 2
 warn_on_root = 1
