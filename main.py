@@ -62,7 +62,7 @@ class Dashboard(FloatLayout):
 
         self.store = JsonStore("settings.json")
         if not self.store.exists("settings"):
-            self.store.put("settings", entzerrung=False, arduino=False, auto=False)
+            self.store.put("settings", arduino=False, auto=False)
 
         app = App.get_running_app()
         self.photos_dir = os.path.join(app.user_data_dir, "photos")
@@ -89,11 +89,30 @@ class Dashboard(FloatLayout):
     def build_topbar(self):
         self.topbar = BoxLayout(size_hint=(1, .08), pos_hint={"top":1}, spacing=2, padding=2)
 
-        btn_k = Button(text="K")
-        btn_g = Button(text="G")
-        btn_e = Button(text="E")
+        btn_k = Button(background_normal="camera_icon.png", background_down="camera_icon.png",text="",size_hint=(None, None),size=(150, 150))
+        btn_g = Button(
+            background_normal="gallery_icon.png",
+            background_down="gallery_icon.png",
+            text="",
+            size_hint=(None, None),
+            size=(150, 150)
+        )
         
-        btn_h = Button(text="?")
+        btn_e = Button(
+            background_normal="settings_icon.png",
+            background_down="settings_icon.png",
+            text="",
+            size_hint=(None, None),
+            size=(150, 150)
+        )
+
+        btn_h = Button(
+            background_normal="question_icon.png",
+            background_down="question_icon.png",
+            text="",
+            size_hint=(None, None),
+            size=(150, 150)
+        )
 
         btn_k.bind(on_press=self.show_camera)
         btn_g.bind(on_press=self.show_gallery)
@@ -111,8 +130,8 @@ class Dashboard(FloatLayout):
     # ======================================================
     def build_camera(self):
         self.camera = Camera(play=False, resolution=(1280, 720))
-        self.camera.size_hint = (1, .9)
-        self.camera.pos_hint = {"center_x":.5,"center_y":.45}
+        self.camera.size_hint = (1, .92)
+        self.camera.pos_hint = {"top":.92}
 
         with self.camera.canvas.before:
             PushMatrix()
@@ -153,8 +172,7 @@ class Dashboard(FloatLayout):
         self.add_widget(self.camera)
         self.add_widget(self.capture)
 
-        if self.store.get("settings")["entzerrung"]:
-            self.init_overlay()
+        self.init_overlay()
 
 
     # ======================================================
@@ -214,17 +232,36 @@ class Dashboard(FloatLayout):
     # Foto aufnehmen
     # ======================================================
     def take_photo(self, instance):
-        number = f"{len([f for f in os.listdir(self.photos_dir) if f.endswith('.png')])+1:04d}"
-        temp_path = os.path.join(self.photos_dir,"temp.png")
+
+        # Nur Hauptnummern zählen (ohne _I)
+        existing = [f for f in os.listdir(self.photos_dir)
+                    if f.endswith(".png") and "_I" not in f]
+
+        number = f"{len(existing)+1:04d}"
+
+        # Temporär speichern
+        temp_path = os.path.join(self.photos_dir, "temp.png")
         self.camera.export_to_png(temp_path)
-        final_path = temp_path
 
-        # Entzerrung
-        if self.store.get("settings")["entzerrung"]:
-            final_path = self.apply_perspective(temp_path)
+        # Entzerren
+        warped_path = self.apply_perspective(temp_path)
 
-        # Vorschau
-        self.show_preview(final_path, number)
+        # Zielnamen
+        final_main = os.path.join(self.photos_dir, number + ".png")
+        final_i = os.path.join(self.photos_dir, number + "_I.png")
+
+        # Entzerrtes Bild zweimal speichern
+        import shutil
+        shutil.copy(warped_path, final_main)
+        shutil.copy(warped_path, final_i)
+
+        # Temp löschen
+        os.remove(temp_path)
+        os.remove(warped_path)
+
+        # Vorschau vom Hauptbild
+        self.show_preview(final_main, number)
+
 
     # ======================================================
     # Perspektivische Transformation
@@ -381,10 +418,7 @@ class Dashboard(FloatLayout):
 
         self.add_widget(layout)
 
-    # ======================================================
-    # A-Seite
-    # ======================================================
-    
+   
     # ======================================================
     # H-Seite
     # ======================================================
@@ -402,7 +436,7 @@ class Dashboard(FloatLayout):
 
         self.clear_widgets()
         self.add_widget(self.topbar)
-        layout=BoxLayout(orientation="vertical", padding=[20,120,20,20], spacing=20)
+        layout=BoxLayout(orientation="vertical", padding=[20,150,50,20], spacing=20)
         layout.add_widget(Label(text="Einstellungen", font_size=32, size_hint_y=None,height=dp(60)))
 
         def create_toggle_row(text,key):
@@ -426,7 +460,7 @@ class Dashboard(FloatLayout):
             row.add_widget(btn_nein)
             return row
 
-        layout.add_widget(create_toggle_row("Mit Entzerrung","entzerrung"))
+        
         layout.add_widget(create_toggle_row("Mit Winkel/Arduino Daten","arduino"))
         layout.add_widget(create_toggle_row("Automatisch speichern","auto"))
 
